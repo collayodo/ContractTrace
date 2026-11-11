@@ -12,6 +12,12 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
+The app loads `backend/.env` automatically if present. Existing process environment variables take precedence. Alternatively, Uvicorn can load a file explicitly:
+
+```bash
+uvicorn app.main:app --reload --env-file .env
+```
+
 By default, the API uses an in-memory store and seeds ten fictional contracts, their invoices and payments, and a proposed amendment for `CT-004`. A signed, effective amendment for that contract removes the invoice-over-contract flag on the next reconciliation. The original reviewer case remains in the case history.
 
 ## Firestore
@@ -32,6 +38,8 @@ Set `NVIDIA_API_KEY` and optionally `NVIDIA_MODEL` to enable `POST /cases/{case_
 - `POST /cases/{id}/ai-analysis`
 
 Resolve a case with `determination=confirmed_issue` or `determination=dismissed` and a reviewer note. Resolution and investigation actions are retained on the case record. Interactive OpenAPI docs are available at `/docs`.
+
+Run `POST /reconcile` before requesting AI analysis. The analysis route accepts a case ID, or a contract ID if exactly one case exists for that contract.
 
 ## Test
 

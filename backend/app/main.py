@@ -1,8 +1,10 @@
 import os
 from datetime import date
+from pathlib import Path
 from typing import Any
 
 import httpx
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
 
 from app.ai import analyze_case
@@ -129,9 +131,15 @@ def create_app(store: Store | None = None) -> FastAPI:
         )
         return _save_case(repository, case)
 
-    @app.post("/cases/{case_id}/ai-analysis")
+    @app.post(
+        "/cases/{case_id}/ai-analysis",
+        description=(
+            "Analyze a case by case ID. A contract ID is also accepted when it has exactly one "
+            "review case; run POST /reconcile first to create cases."
+        ),
+    )
     async def case_ai_analysis(case_id: str) -> dict[str, Any]:
-        case = _get_case(repository, case_id)
+        case = _get_analysis_case(repository, case_id)
         try:
             return (await analyze_case(case)).model_dump(mode="json")
         except RuntimeError as error:
@@ -151,10 +159,41 @@ def _get_case(store: Store, case_id: str) -> ReviewCase:
     return ReviewCase.model_validate(value)
 
 
+def _get_analysis_case(store: Store, case_or_contract_id: str) -> ReviewCase:
+    value = store.get("cases", case_or_contract_id)
+    if value is not None:
+        return ReviewCase.model_validate(value)
+
+    if store.get("contracts", case_or_contract_id) is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Case not found. Run POST /reconcile, then use a case ID from its flags.",
+        )
+
+    matches = [
+        ReviewCase.model_validate(item)
+        for item in store.list("cases")
+        if item.get("contract_id") == case_or_contract_id
+    ]
+    if not matches:
+        raise HTTPException(
+            status_code=409,
+            detail=f"No review case exists for contract {case_or_contract_id}. Run POST /reconcile first.",
+        )
+    if len(matches) > 1:
+        case_ids = ", ".join(sorted(item.id for item in matches))
+        raise HTTPException(
+            status_code=409,
+            detail=f"Multiple review cases exist for contract {case_or_contract_id}; use a case ID: {case_ids}",
+        )
+    return matches[0]
+
+
 def _save_case(store: Store, case: ReviewCase) -> dict[str, Any]:
     value = case.model_dump(mode="json")
     store.put("cases", case.id, value)
     return value
 
 
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 app = create_app()
