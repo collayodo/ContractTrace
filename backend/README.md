@@ -42,4 +42,4 @@ pytest
 
 ## CI
 
-GitHub Actions runs the backend tests and Python syntax check on pushes and pull requests that change `backend/**` or the workflow. CI uses the in-memory store and does not require Firestore credentials or an NVIDIA API key. Automatic deployment is not configured.
+GitHub Actions runs the backend tests and Python syntax check on pushes to any branch and pull requests targeting any branch when `backend/**` or the workflow changes. It does not depend on a `main` branch. CI uses the in-memory store and does not require Firestore credentials or an NVIDIA API key. Automatic deployment is not configured.
