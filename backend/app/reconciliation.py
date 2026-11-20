@@ -1,6 +1,7 @@
 from datetime import date, datetime, timezone
 from typing import Any
 
+from app.audit import append_audit
 from app.models import (
     Amendment,
     AmendmentStatus,
@@ -107,6 +108,22 @@ def reconcile(store: Store, as_of: date) -> dict[str, Any]:
         existing = store.get("cases", finding.id)
         if existing is None:
             store.put("cases", finding.id, finding.model_dump(mode="json"))
+            append_audit(
+                store,
+                actor="system:reconciliation",
+                action="case_opened",
+                target_type="case",
+                target_id=finding.id,
+                details={
+                    "contract_id": finding.contract_id,
+                    "exception_type": finding.exception_type.value,
+                    "reason": finding.rationale,
+                    "source_ids": finding.source_ids,
+                    "observed_amount_cents": finding.observed_amount_cents,
+                    "expected_amount_cents": finding.expected_amount_cents,
+                    "as_of": as_of.isoformat(),
+                },
+            )
         else:
             previous = ReviewCase.model_validate(existing)
             finding.status = previous.status
