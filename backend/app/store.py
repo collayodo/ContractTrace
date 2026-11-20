@@ -5,7 +5,7 @@ from typing import Any, Protocol
 from google.cloud import firestore
 
 
-COLLECTIONS = ("contracts", "amendments", "invoices", "payments", "cases")
+COLLECTIONS = ("contracts", "amendments", "invoices", "payments", "cases", "audit_log")
 
 
 class Store(Protocol):

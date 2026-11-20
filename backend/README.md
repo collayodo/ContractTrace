@@ -41,6 +41,28 @@ Resolve a case with `determination=confirmed_issue` or `determination=dismissed`
 
 Run `POST /reconcile` before requesting AI analysis. The analysis route accepts a case ID, or a contract ID if exactly one case exists for that contract.
 
+## Access control
+
+Every endpoint except `/health` needs `Authorization: Bearer <token>`. The token carries the user (`sub`) and a role (`role`), signed with `AUTH_JWT_SECRET` (at least 32 characters; in Cloud Run, inject it from Secret Manager). With no secret configured the API returns 503 rather than running open. Set `APP_ENV=production` to hide `/docs` and `/openapi.json`.
+
+| Permission | viewer | reviewer | admin |
+| --- | --- | --- | --- |
+| Read contracts and cases | yes | yes | yes |
+| Read the audit log | no | yes | yes |
+| Run reconciliation | no | yes | yes |
+| Investigate, resolve, request AI analysis | no | yes | no |
+| Record amendments | no | no | yes |
+
+Admins cannot resolve cases and reviewers cannot record amendments, because an amendment can clear a flag and one person should not be able to do both. The matrix lives in `app/auth.py` (`ROLE_PERMISSIONS`).
+
+The actor on every case entry and audit entry comes from the token. The `actor` field in request bodies is ignored. Denied write attempts by signed in users are recorded in the audit log as `permission_denied`.
+
+For local testing, create a token with `python scripts/issue_dev_token.py reviewer alice` (needs `AUTH_JWT_SECRET` set) and send it as the bearer token. To move to Firebase Auth or Identity Platform later, replace `verify_token` in `app/auth.py`; the roles and endpoint checks stay the same.
+
+## Audit log
+
+Every case opening, investigation note, resolution and amendment is appended to an `audit_log` collection. Each entry stores the hash of the previous entry and a hash of its own contents, so editing or removing an entry breaks the chain. `GET /audit` lists entries (filter with `target_id`) and `GET /audit/verify` recomputes the chain. The application only appends; deny update and delete on `audit_log` in Firestore rules and IAM, and keep the latest `head_hash` outside the database, because a hash chain cannot show that the newest entries were cut off.
+
 ## Test
 
 ```bash

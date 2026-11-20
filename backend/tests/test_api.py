@@ -6,10 +6,11 @@ from app import main as main_module
 from app.main import create_app
 from app.models import AIAnalysis
 from app.store import MemoryStore
+from auth_helpers import headers
 
 
 def make_client() -> TestClient:
-    return TestClient(create_app(MemoryStore()))
+    return TestClient(create_app(MemoryStore()), headers=headers("reviewer"))
 
 
 def test_seeded_data_has_ten_contracts_and_three_exception_types() -> None:
@@ -52,6 +53,7 @@ def test_signed_amendment_changes_reconciliation_and_preserves_prior_case() -> N
             "status": "signed",
             "rationale": "Fictional signed change order for additional migration work.",
         },
+        headers=headers("admin"),
     )
     assert amendment.status_code == 201
 
