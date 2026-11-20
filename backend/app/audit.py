@@ -4,15 +4,16 @@ Every entry stores the hash of the entry before it plus a hash of its own
 contents, so editing, reordering or removing any entry in the middle of the
 log breaks the chain and is caught by verify_chain().
 
-The application only ever appends. Pair this with Firestore security rules
-and IAM that deny update and delete on the audit_log collection, and keep a
-copy of the latest head hash somewhere outside the database, because a chain
-cannot prove that its newest entries were not cut off.
+The application only ever appends. Firestore security rules do not apply to the
+backend's own service account, and Firestore has no IAM role that allows create
+but not update or delete. So append only is enforced by this code, tampering is
+exposed by the hash chain, and Cloud Audit Logs (Data Access) record writes and
+deletes at platform level. Keep a copy of the latest head hash somewhere outside
+the database, because a chain cannot prove that its newest entries were not cut off.
 """
 
 import hashlib
 import json
-from threading import RLock
 from typing import Any, Optional
 
 from pydantic import BaseModel, Field
@@ -22,10 +23,6 @@ from app.store import Store
 
 AUDIT_COLLECTION = "audit_log"
 GENESIS_HASH = "0" * 64
-
-# Serialises appends inside one process. Across several Cloud Run instances the
-# Firestore version must claim the next sequence number in a transaction.
-_append_lock = RLock()
 
 
 class AuditEntry(BaseModel):
@@ -65,22 +62,25 @@ def append_audit(
     target_id: str,
     details: Optional[dict[str, Any]] = None,
 ) -> AuditEntry:
-    with _append_lock:
-        entries = list_entries(store)
-        last = entries[-1] if entries else None
+    clean_details = json.loads(json.dumps(details or {}, default=str))
+
+    def build(last: Optional[dict[str, Any]]) -> tuple[str, dict[str, Any]]:
+        # The store runs this under a lock or a Firestore transaction, and a
+        # transaction may retry it, so it only computes values.
         fields = {
-            "seq": last.seq + 1 if last else 1,
+            "seq": int(last["seq"]) + 1 if last else 1,
             "at": utc_now().isoformat(),
             "actor": actor,
             "action": action,
             "target_type": target_type,
             "target_id": target_id,
-            "details": json.loads(json.dumps(details or {}, default=str)),
-            "prev_hash": last.hash if last else GENESIS_HASH,
+            "details": clean_details,
+            "prev_hash": last["hash"] if last else GENESIS_HASH,
         }
         entry = AuditEntry(**fields, hash=_digest(fields))
-        store.put(AUDIT_COLLECTION, f"{entry.seq:08d}", entry.model_dump(mode="json"))
-        return entry
+        return f"{entry.seq:08d}", entry.model_dump(mode="json")
+
+    return AuditEntry.model_validate(store.append_chained(AUDIT_COLLECTION, build))
 
 
 def verify_chain(store: Store) -> dict[str, Any]:
