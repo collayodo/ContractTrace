@@ -94,13 +94,16 @@ class ReviewCase(BaseModel):
 
 
 class InvestigationRequest(BaseModel):
-    actor: str = Field(min_length=1, max_length=120)
+    # Ignored. The actor is taken from the authenticated token. Kept optional so
+    # existing clients that still send it keep working.
+    actor: Optional[str] = Field(default=None, max_length=120)
     action: str = Field(min_length=1, max_length=120)
     note: str = Field(min_length=1, max_length=4000)
 
 
 class ResolutionRequest(BaseModel):
-    actor: str = Field(min_length=1, max_length=120)
+    # Ignored. The actor is taken from the authenticated token.
+    actor: Optional[str] = Field(default=None, max_length=120)
     determination: Determination
     note: str = Field(min_length=1, max_length=4000)
 

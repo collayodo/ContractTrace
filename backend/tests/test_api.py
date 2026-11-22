@@ -2,12 +2,15 @@ from datetime import date
 
 from fastapi.testclient import TestClient
 
+from app import main as main_module
 from app.main import create_app
+from app.models import AIAnalysis
 from app.store import MemoryStore
+from auth_helpers import headers
 
 
 def make_client() -> TestClient:
-    return TestClient(create_app(MemoryStore()))
+    return TestClient(create_app(MemoryStore()), headers=headers("reviewer"))
 
 
 def test_seeded_data_has_ten_contracts_and_three_exception_types() -> None:
@@ -50,6 +53,7 @@ def test_signed_amendment_changes_reconciliation_and_preserves_prior_case() -> N
             "status": "signed",
             "rationale": "Fictional signed change order for additional migration work.",
         },
+        headers=headers("admin"),
     )
     assert amendment.status_code == 201
 
@@ -90,3 +94,30 @@ def test_case_investigation_and_resolution_keep_audit_record() -> None:
         f"/cases/{case_id}/investigation",
         json={"actor": "reviewer@example.gov", "action": "edit", "note": "Should be blocked"},
     ).status_code == 409
+
+
+def test_ai_analysis_accepts_contract_id_when_it_has_one_case(monkeypatch) -> None:
+    client = make_client()
+    before_reconciliation = client.post("/cases/CT-004/ai-analysis")
+    assert before_reconciliation.status_code == 409
+    assert "Run POST /reconcile first" in before_reconciliation.json()["detail"]
+
+    client.post("/reconcile", params={"as_of": "2025-12-31"})
+    analyzed_case_ids: list[str] = []
+
+    async def fake_analyze_case(case):
+        analyzed_case_ids.append(case.id)
+        return AIAnalysis(
+            case_id=case.id,
+            summary="The invoice total exceeds the current authorized amount.",
+            evidence_observations=["Invoice INV-004 is above the base contract amount."],
+            limitation="Verify the signed amendment and supporting invoice.",
+            model="test-model",
+        )
+
+    monkeypatch.setattr(main_module, "analyze_case", fake_analyze_case)
+    response = client.post("/cases/CT-004/ai-analysis")
+
+    assert response.status_code == 200
+    assert response.json()["case_id"] == "CT-004-invoice_over_contract-INV-004"
+    assert analyzed_case_ids == [response.json()["case_id"]]

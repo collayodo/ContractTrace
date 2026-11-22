@@ -1,0 +1,16 @@
+rules_version = '2';
+
+// ContractTrace: only the backend talks to Firestore, using its own service
+// account. Direct access from browsers and mobile apps is denied everywhere,
+// including the audit_log and audit_head collections.
+//
+// Note: these rules do not apply to the backend service account, because
+// server libraries bypass them. Access for the backend is controlled by IAM
+// (roles/datastore.user on contracttrace-api), not by this file.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
