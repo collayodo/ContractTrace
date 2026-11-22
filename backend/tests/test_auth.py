@@ -13,8 +13,8 @@ SECRET = "test-only-secret-that-is-at-least-32-characters-long"
 
 PROTECTED = [
     ("GET", "/contracts"),
-    ("GET", "/contracts/CT-004/evidence"),
-    ("POST", "/contracts/CT-004/amendments"),
+    ("GET", "/contracts/CNT-2026-004/evidence"),
+    ("POST", "/contracts/CNT-2026-004/amendments"),
     ("POST", "/reconcile"),
     ("GET", "/cases"),
     ("GET", "/cases/some-case"),
@@ -39,7 +39,7 @@ def make_client() -> TestClient:
 
 
 def first_case_id(client: TestClient) -> str:
-    return client.post("/reconcile", params={"as_of": "2025-12-31"}, headers=headers("reviewer")).json()["flags"][0]["id"]
+    return client.post("/reconcile", params={"as_of": "2026-12-31"}, headers=headers("reviewer")).json()["flags"][0]["id"]
 
 
 def raw_token(**overrides) -> str:
@@ -103,7 +103,7 @@ def test_viewer_can_read_but_not_act() -> None:
     assert client.post(
         f"/cases/{case_id}/resolve", json={"determination": "dismissed", "note": "y"}, headers=viewer
     ).status_code == 403
-    assert client.post("/contracts/CT-004/amendments", json=AMENDMENT, headers=viewer).status_code == 403
+    assert client.post("/contracts/CNT-2026-004/amendments", json=AMENDMENT, headers=viewer).status_code == 403
 
 
 def test_reviewer_can_resolve_but_cannot_record_amendments() -> None:
@@ -114,7 +114,7 @@ def test_reviewer_can_resolve_but_cannot_record_amendments() -> None:
     assert client.post(
         f"/cases/{case_id}/resolve", json={"determination": "dismissed", "note": "Checked."}, headers=reviewer
     ).status_code == 200
-    assert client.post("/contracts/CT-004/amendments", json=AMENDMENT, headers=reviewer).status_code == 403
+    assert client.post("/contracts/CNT-2026-004/amendments", json=AMENDMENT, headers=reviewer).status_code == 403
 
 
 def test_admin_records_amendments_but_cannot_resolve_cases() -> None:
@@ -122,7 +122,7 @@ def test_admin_records_amendments_but_cannot_resolve_cases() -> None:
     case_id = first_case_id(client)
     admin = headers("admin")
 
-    assert client.post("/contracts/CT-004/amendments", json=AMENDMENT, headers=admin).status_code == 201
+    assert client.post("/contracts/CNT-2026-004/amendments", json=AMENDMENT, headers=admin).status_code == 201
     assert client.post(
         f"/cases/{case_id}/resolve", json={"determination": "dismissed", "note": "Checked."}, headers=admin
     ).status_code == 403
@@ -151,7 +151,7 @@ def test_actor_comes_from_the_token_not_the_request_body() -> None:
 def test_amendment_records_who_entered_it() -> None:
     client = make_client()
     saved = client.post(
-        "/contracts/CT-004/amendments", json=AMENDMENT, headers=headers("admin", "admin-7")
+        "/contracts/CNT-2026-004/amendments", json=AMENDMENT, headers=headers("admin", "admin-7")
     ).json()
     assert saved["recorded_by"] == "admin-7"
 
@@ -160,7 +160,7 @@ def test_denied_write_attempts_are_logged_but_denied_reads_are_not() -> None:
     client = make_client()
     reviewer = headers("reviewer", "reviewer-1")
 
-    client.post("/contracts/CT-004/amendments", json=AMENDMENT, headers=headers("viewer", "viewer-9"))
+    client.post("/contracts/CNT-2026-004/amendments", json=AMENDMENT, headers=headers("viewer", "viewer-9"))
     client.get("/audit", headers=headers("viewer", "viewer-9"))
 
     entries = client.get("/audit", headers=reviewer).json()
@@ -172,8 +172,8 @@ def test_denied_write_attempts_are_logged_but_denied_reads_are_not() -> None:
 
 def test_unauthenticated_attempts_do_not_write_to_the_audit_log() -> None:
     client = make_client()
-    client.post("/contracts/CT-004/amendments", json=AMENDMENT)
-    client.post("/contracts/CT-004/amendments", headers=bearer("garbage"))
+    client.post("/contracts/CNT-2026-004/amendments", json=AMENDMENT)
+    client.post("/contracts/CNT-2026-004/amendments", headers=bearer("garbage"))
     assert client.get("/audit", headers=headers("reviewer")).json() == []
 
 

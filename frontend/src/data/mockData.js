@@ -49,8 +49,11 @@ export const formatMoneyExact = (value) =>
     role: "Infrastructure Audit Specialist",
     email: "arther.n@oversight.gov",
   },
-];
+].map((auditor) => ({ ...auditor, appRole: "reviewer" }));
 // Human-readable Rule Catalog (UN SDG 16.6 Deterministic Verification Rules)
+export const RULE_PAYMENT_MISMATCH = "RULE_4_PAYMENT_MISMATCH";
+export const RULE_UNMATCHED_PAYMENT = "RULE_5_UNMATCHED_PAYMENT";
+
 export const RULE_CATALOG = {
   RULE_1_OVERBILL: {
     code: "RULE_1_OVERBILL",
@@ -78,6 +81,24 @@ export const RULE_CATALOG = {
     formula: "Active Rule 1 Flag AND Executed Amendment New Cap >= SUM(Eligible Invoices)",
     description:
       "Automatically transitions an active cap-overrun flag to 'Resolved by Amendment' when an executed cap increase covers cumulative eligible billings, retaining full audit history.",
+  },
+  RULE_4_PAYMENT_MISMATCH: {
+    code: "RULE_4_PAYMENT_MISMATCH",
+    shortName: "Rule 4 · Payment Mismatch",
+    title: "Rule 4: Linked Payments Do Not Reconcile to the Invoice Amount",
+    category: "Disbursement Reconciliation",
+    formula: "SUM(Linked Payments) != Invoice Amount",
+    description:
+      "Flags an invoice whose linked treasury disbursements total less or more than the invoice value, indicating a partial payment, credit, or split remittance that needs review.",
+  },
+  RULE_5_UNMATCHED_PAYMENT: {
+    code: "RULE_5_UNMATCHED_PAYMENT",
+    shortName: "Rule 5 · Unmatched Payment",
+    title: "Rule 5: Payment Has No Matching Invoice Under the Same Contract",
+    category: "Disbursement Reconciliation",
+    formula: "Payment.invoice_id is NULL OR Invoice.contract != Payment.contract",
+    description:
+      "Flags a treasury disbursement that does not point to an invoice record under the same contract, so the remittance reference and source records can be confirmed.",
   },
 };
 
