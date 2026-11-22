@@ -63,6 +63,71 @@ For local testing, create a token with `python scripts/issue_dev_token.py review
 
 Every case opening, investigation note, resolution and amendment is appended to an `audit_log` collection. Each entry stores the hash of the previous entry and a hash of its own contents, so editing or removing an entry breaks the chain. `GET /audit` lists entries (filter with `target_id`) and `GET /audit/verify` recomputes the chain. The application only appends; deny update and delete on `audit_log` in Firestore rules and IAM, and keep the latest `head_hash` outside the database, because a hash chain cannot show that the newest entries were cut off.
 
+## Deploy on Firebase + Cloud Run
+
+Firebase App Hosting only runs Node.js frameworks, so the Python API runs as a container on Cloud Run and Firebase Hosting proxies the public domain to it. The repository root contains `firebase.json` and the API has a `backend/Dockerfile`. Both services must be in the same Firebase project on the Blaze plan.
+
+1. Select the project, enable the APIs, and create the Firestore database:
+
+   ```bash
+   gcloud config set project PROJECT_ID
+   gcloud services enable run.googleapis.com cloudbuild.googleapis.com \
+     artifactregistry.googleapis.com firestore.googleapis.com secretmanager.googleapis.com
+   gcloud firestore databases create --location=us-central1
+   ```
+
+2. Create a runtime service account that can read and write Firestore:
+
+   ```bash
+   gcloud iam service-accounts create contracttrace-run \
+     --display-name="ContractTrace Cloud Run"
+   gcloud projects add-iam-policy-binding PROJECT_ID \
+     --member="serviceAccount:contracttrace-run@PROJECT_ID.iam.gserviceaccount.com" \
+     --role="roles/datastore.user"
+   ```
+
+3. Store secrets in Secret Manager. Generate a real JWT secret, then grant the runtime service account access:
+
+   ```bash
+   python -c "import secrets; print(secrets.token_urlsafe(48), end='')" | \
+     gcloud secrets create AUTH_JWT_SECRET --data-file=- --replication-policy=automatic
+   gcloud secrets add-iam-policy-binding AUTH_JWT_SECRET \
+     --member="serviceAccount:contracttrace-run@PROJECT_ID.iam.gserviceaccount.com" \
+     --role="roles/secretmanager.secretAccessor"
+   ```
+
+   Repeat for `NVIDIA_API_KEY` if AI analysis should be enabled.
+
+4. Build and deploy the API. `--source` uses `backend/Dockerfile`:
+
+   ```bash
+   gcloud run deploy contracttrace-api \
+     --source backend \
+     --region us-central1 \
+     --service-account contracttrace-run@PROJECT_ID.iam.gserviceaccount.com \
+     --allow-unauthenticated \
+     --min-instances 0 \
+     --max-instances 4 \
+     --set-env-vars APP_ENV=production,STORAGE_BACKEND=firestore,SEED_DEMO_DATA=false,GOOGLE_CLOUD_PROJECT=PROJECT_ID \
+     --set-secrets AUTH_JWT_SECRET=AUTH_JWT_SECRET:latest,NVIDIA_API_KEY=NVIDIA_API_KEY:latest
+   ```
+
+   Drop the `NVIDIA_API_KEY` entry from `--set-secrets` when the secret does not exist yet. `SEED_DEMO_DATA=false` gives an empty production database; set it to `true` only for a demo.
+
+5. Point Firebase Hosting at the service and deploy the Firestore rules:
+
+   ```bash
+   firebase login
+   firebase use --add
+   firebase deploy --only hosting,firestore:rules
+   ```
+
+   If Hosting has never been enabled for the project, create the default site once in the Firebase console (Build > Hosting) before deploying.
+
+The API is then available at `https://PROJECT_ID.web.app/` and `https://PROJECT_ID.firebaseapp.com/`, for example `GET /health` and `GET /contracts`. Cloud Run must allow unauthenticated invocations because Hosting does not authenticate to it; the API still requires its bearer token on every route except `/health`, and `firestore.rules` denies all direct client access.
+
+The Hosting rewrite passes the path through unchanged and covers the whole site, so the API owns `/`. If a static frontend is added to the same site later, host the API on its own Hosting site/target, or mount the FastAPI app under `/api` and change the rewrite source to `/api/**`. Hosting requests time out after 60 seconds; AI analysis uses a 45-second upstream timeout.
+
 ## Test
 
 ```bash
