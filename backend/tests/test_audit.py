@@ -148,3 +148,29 @@ def test_rewriting_an_actor_is_detected() -> None:
     store.put(AUDIT_COLLECTION, "00000001", entry)
 
     assert verify_chain(store)["valid"] is False
+
+
+def test_concurrent_appends_keep_one_unbroken_chain() -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    store = MemoryStore()
+
+    def write(index: int) -> None:
+        append_audit(store, actor="a", action="x", target_type="case", target_id=str(index))
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(write, range(60)))
+
+    result = verify_chain(store)
+    assert result["valid"] is True
+    assert result["entries_checked"] == 60
+    assert sorted(item["seq"] for item in store.list(AUDIT_COLLECTION)) == list(range(1, 61))
+
+
+def test_append_chained_refuses_an_existing_document_id() -> None:
+    import pytest
+
+    store = MemoryStore()
+    store.append_chained("audit_log", lambda last: ("00000001", {"seq": 1, "hash": "h"}))
+    with pytest.raises(ValueError):
+        store.append_chained("audit_log", lambda last: ("00000001", {"seq": 1, "hash": "h"}))
