@@ -90,6 +90,8 @@ class ReviewCase(BaseModel):
     investigation: list[InvestigationEntry] = Field(default_factory=list)
     resolution_note: Optional[str] = None
     created_at: datetime = Field(default_factory=utc_now)
+    started_at: Optional[datetime] = None
+    due_at: Optional[datetime] = None
     updated_at: datetime = Field(default_factory=utc_now)
 
 

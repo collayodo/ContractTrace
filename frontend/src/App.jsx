@@ -2158,6 +2158,102 @@ function Analytics({ decisions }) {
   const rule1Count = flags.filter((f) => f.rule === "RULE_1_OVERBILL" && f.status === "ACTIVE").length;
   const rule2Count = flags.filter((f) => f.rule === "RULE_2_TEMPORAL").length;
 
+  const sla = useMemo(() => {
+    const DAY_MS = 86400000;
+    const today = new Date().toISOString().slice(0, 10);
+    const toIso = (value) => (value ? String(value).slice(0, 10) : "");
+    const diffDays = (from, to) =>
+      from && to ? Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS) : null;
+    const average = (values) => (values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0);
+
+    const rows = flags.map((f) => {
+      const decision = decisions[f.id];
+      const status = decision?.status || f.status;
+      const completed = decision?.timestamp
+        ? toIso(decision.timestamp)
+        : toIso(f.completedAt || (status === "RESOLVED_BY_AMENDMENT" ? f.resolvedAt : ""));
+      const created = toIso(f.created);
+      const started = toIso(f.startedAt);
+      const due = toIso(f.dueAt);
+      let slaState = { label: "—", className: "severity-low" };
+      if (completed && due) {
+        slaState =
+          completed <= due
+            ? { label: "Met", className: "severity-low" }
+            : { label: "Breached", className: "severity-critical" };
+      } else if (completed) {
+        slaState = { label: "—", className: "severity-low" };
+      } else if (due) {
+        slaState =
+          due < today
+            ? { label: `Overdue ${diffDays(due, today)}d`, className: "severity-critical" }
+            : { label: `Due in ${diffDays(today, due)}d`, className: "severity-medium" };
+      }
+      const cycle = completed ? diffDays(created, completed) : diffDays(created, today);
+      return { id: f.id, contract: f.contract, rule: f.rule, severity: f.severity || "MEDIUM", status, created, started, due, completed, cycle, slaState };
+    });
+
+    const completedRows = rows.filter((r) => r.completed);
+    const openRows = rows.filter((r) => !r.completed);
+    const cycleTimes = completedRows.map((r) => diffDays(r.created, r.completed)).filter((n) => n !== null);
+    const sortedCycle = [...cycleTimes].sort((a, b) => a - b);
+    const medianCycle = sortedCycle.length
+      ? sortedCycle.length % 2
+        ? sortedCycle[(sortedCycle.length - 1) / 2]
+        : (sortedCycle[sortedCycle.length / 2 - 1] + sortedCycle[sortedCycle.length / 2]) / 2
+      : 0;
+
+    const overdue = openRows.filter((r) => r.due && r.due < today);
+    const dueSoon = openRows.filter((r) => r.due && r.due >= today && diffDays(today, r.due) <= 2);
+    const breached = completedRows.filter((r) => r.due && r.completed > r.due).length;
+    const attainment = completedRows.length
+      ? Math.round(((completedRows.length - breached) / completedRows.length) * 100)
+      : 100;
+
+    const avgTriage = average(rows.map((r) => diffDays(r.created, r.started)).filter((n) => n !== null && n >= 0));
+    const avgInvestigate = average(rows.map((r) => diffDays(r.started, r.completed)).filter((n) => n !== null && n >= 0));
+    const awaitingTriage = openRows.filter((r) => !r.started).length;
+    const inInvestigation = openRows.filter((r) => r.started).length;
+    const avgAge = average(openRows.map((r) => diffDays(r.created, today)).filter((n) => n !== null));
+
+    // Monthly burndown: cases still open at the end of each month.
+    const dates = rows.flatMap((r) => [r.created, r.completed]).filter(Boolean).sort();
+    const firstMonth = (dates[0] || today).slice(0, 7);
+    const lastMonth = (dates[dates.length - 1] || today).slice(0, 7);
+    const endMonth = lastMonth > today.slice(0, 7) ? lastMonth : today.slice(0, 7);
+    const burndown = [];
+    const cursor = new Date(`${firstMonth}-01T00:00:00Z`);
+    const stop = new Date(`${endMonth}-01T00:00:00Z`);
+    while (cursor <= stop && burndown.length < 18) {
+      const next = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1));
+      const monthEnd = new Date(next.getTime() - DAY_MS).toISOString().slice(0, 10);
+      const opened = rows.filter((r) => r.created && r.created <= monthEnd).length;
+      const done = rows.filter((r) => r.completed && r.completed <= monthEnd).length;
+      burndown.push({ label: cursor.toLocaleString("en-US", { month: "short" }), remaining: Math.max(opened - done, 0) });
+      cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+    }
+
+    return {
+      rows,
+      openRows,
+      completedRows,
+      avgCycle: average(cycleTimes),
+      medianCycle,
+      overdue,
+      dueSoon,
+      breached,
+      attainment,
+      avgTriage,
+      avgInvestigate,
+      awaitingTriage,
+      inInvestigation,
+      avgAge,
+      burndown,
+      throughput: (completedRows.length / Math.max(burndown.length, 1)).toFixed(1),
+      completedCount: completedRows.length,
+    };
+  }, [flags, decisions]);
+
   return (
     <div className="page-stack">
       <div className="kpi-grid">
@@ -2202,6 +2298,181 @@ function Analytics({ decisions }) {
           </div>
         </Card>
       </div>
+
+      <div className="section-heading">
+        <div>
+          <h2>Review-Batch SLA, Cycle Time &amp; Burndown</h2>
+          <p>Lifecycle timestamps, cycle-time distribution, monthly burndown, overdue exposure, and stage bottlenecks</p>
+        </div>
+      </div>
+
+      <div className="kpi-grid">
+        <Card className="kpi">
+          <div className="kpi-icon blue">
+            <Icon name="clock" size={18} />
+          </div>
+          <div>
+            <span>Average Cycle Time</span>
+            <strong>{sla.avgCycle.toFixed(1)} d</strong>
+            <small>{sla.completedCount} resolved cases · created → completed</small>
+          </div>
+        </Card>
+        <Card className="kpi">
+          <div className="kpi-icon slate">
+            <Icon name="chart" size={18} />
+          </div>
+          <div>
+            <span>Median Cycle Time</span>
+            <strong>{sla.medianCycle.toFixed(1)} d</strong>
+            <small>Half of the batch closes faster than this</small>
+          </div>
+        </Card>
+        <Card className="kpi">
+          <div className="kpi-icon green">
+            <Icon name="check" size={18} />
+          </div>
+          <div>
+            <span>SLA Attainment</span>
+            <strong>{sla.attainment}%</strong>
+            <small>
+              {sla.breached} of {sla.completedCount} resolved past due
+            </small>
+          </div>
+        </Card>
+        <Card className="kpi">
+          <div className="kpi-icon red">
+            <Icon name="flag" size={18} />
+          </div>
+          <div>
+            <span>Overdue Cases</span>
+            <strong>{sla.overdue.length}</strong>
+            <small>{sla.dueSoon.length} more due within 2 days</small>
+          </div>
+        </Card>
+      </div>
+
+      <div className="analytics-grid">
+        <Card>
+          <CardHeader
+            title="Review Burndown"
+            icon="chart"
+            subtitle="Cases still open at the end of each month"
+            action={<span style={{ fontSize: 12, color: "var(--muted)" }}>Throughput {sla.throughput}/mo</span>}
+          />
+          <div className="horizontal-bars">
+            {(() => {
+              const max = Math.max(...sla.burndown.map((p) => p.remaining), 1);
+              return sla.burndown.map((point, index) => (
+                <div key={`${point.label}-${index}`}>
+                  <span>{point.label}</span>
+                  <div>
+                    <i
+                      style={{
+                        width: `${point.remaining > 0 ? Math.max((point.remaining / max) * 100, 8) : 0}%`,
+                        background: point.remaining > 0 ? "#1d4ed8" : "#cbd5e1",
+                      }}
+                    />
+                  </div>
+                  <strong>{point.remaining}</strong>
+                </div>
+              ));
+            })()}
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="Stage Bottlenecks"
+            icon="clock"
+            subtitle="Average days spent in each review stage"
+          />
+          <div className="horizontal-bars">
+            {(() => {
+              const stages = [
+                ["Triage · created → started", sla.avgTriage, "#ea580c"],
+                ["Investigation · started → resolved", sla.avgInvestigate, "#e11d48"],
+                ["Open backlog · current age", sla.avgAge, "#1d4ed8"],
+              ];
+              const max = Math.max(...stages.map((stage) => stage[1]), 1);
+              return stages.map(([label, value, color]) => (
+                <div key={label}>
+                  <span>{label}</span>
+                  <div>
+                    <i
+                      style={{
+                        width: `${value > 0 ? Math.max((value / max) * 100, 8) : 0}%`,
+                        background: color,
+                      }}
+                    />
+                  </div>
+                  <strong>{value.toFixed(1)}d</strong>
+                </div>
+              ));
+            })()}
+          </div>
+          <div className="legend-row">
+            <span>
+              <i className="orange" /> {sla.awaitingTriage} awaiting triage
+            </span>
+            <span>
+              <i className="red" /> {sla.inInvestigation} in investigation
+            </span>
+            <span>
+              <i className="blue" /> {sla.openRows.length} open of {sla.rows.length}
+            </span>
+          </div>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader
+          title="Case Cycle-Time & SLA Register"
+          icon="flag"
+          subtitle="Created, started, due and completed timestamps with per-case SLA outcome"
+        />
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Case</th>
+                <th>Contract</th>
+                <th>Rule</th>
+                <th>Severity</th>
+                <th>Created</th>
+                <th>Started</th>
+                <th>Due</th>
+                <th>Completed</th>
+                <th className="right">Cycle</th>
+                <th>SLA</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sla.rows.map((row) => (
+                <tr key={row.id}>
+                  <td>
+                    <code>{row.id}</code>
+                  </td>
+                  <td>
+                    <code>{row.contract}</code>
+                  </td>
+                  <td>{getRuleMeta(row.rule).shortName}</td>
+                  <td>
+                    <SeverityBadge severity={row.severity} />
+                  </td>
+                  <td>{row.created ? formatDate(row.created) : "—"}</td>
+                  <td>{row.started ? formatDate(row.started) : "—"}</td>
+                  <td>{row.due ? formatDate(row.due) : "—"}</td>
+                  <td>{row.completed ? formatDate(row.completed) : "—"}</td>
+                  <td className="right num">{row.cycle === null ? "—" : `${row.cycle}d`}</td>
+                  <td>
+                    <span className={`severity ${row.slaState.className}`}>{row.slaState.label}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
 
       <div className="analytics-grid">
         <Card>

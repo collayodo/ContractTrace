@@ -42,6 +42,10 @@ Resolve a case with `determination=confirmed_issue` or `determination=dismissed`
 
 Run `POST /reconcile` before requesting AI analysis. The analysis route accepts a case ID, or a contract ID if exactly one case exists for that contract.
 
+## Review SLA
+
+Every case carries lifecycle timestamps: `created_at` when reconciliation opens it, `started_at` when the first investigation note is recorded, `due_at` as the SLA deadline, and `updated_at` on each change. `due_at` is stamped at open time from the SLA policy and stays fixed across re-runs. Cap-overrun cases (`invoice_over_contract`) are treated as HIGH severity with a 7-day window; disbursement discrepancies (`payment_mismatch`, `unmatched_payment`) get a 14-day window. Override either with `SLA_WINDOW_DAYS_HIGH` and `SLA_WINDOW_DAYS_MEDIUM`. The dashboard derives completion time from the resolving investigation entry.
+
 ## Access control
 
 Every endpoint except `/health` needs `Authorization: Bearer <token>`. The token carries the user (`sub`) and a role (`role`), signed with `AUTH_JWT_SECRET` (at least 32 characters; in Cloud Run, inject it from Secret Manager). With no secret configured the API returns 503 rather than running open. Set `APP_ENV=production` to hide `/docs` and `/openapi.json`.

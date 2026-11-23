@@ -48,6 +48,24 @@ function deriveReviewer(reviewCase) {
   return "System Rule Engine";
 }
 
+// Lifecycle timestamps for SLA / cycle-time analytics. The backend persists
+// created_at, started_at and due_at; completion is the moment the case was
+// resolved, which is recorded as the final "resolved:*" investigation entry.
+function deriveStartedAt(reviewCase) {
+  if (reviewCase.started_at) return asDate(reviewCase.started_at);
+  const first = (reviewCase.investigation || [])[0];
+  return first ? asDate(first.at) : "";
+}
+
+function deriveCompletedAt(reviewCase) {
+  const resolved = [...(reviewCase.investigation || [])]
+    .reverse()
+    .find((entry) => String(entry?.action || "").startsWith("resolved:"));
+  if (resolved) return asDate(resolved.at);
+  if (reviewCase.status === "resolved") return asDate(reviewCase.updated_at);
+  return "";
+}
+
 export function adaptCase(reviewCase) {
   const rule = RULE_BY_EXCEPTION[reviewCase.exception_type] || "RULE_1_OVERBILL";
   return {
@@ -57,6 +75,9 @@ export function adaptCase(reviewCase) {
     rule,
     severity: reviewCase.exception_type === "invoice_over_contract" ? "HIGH" : "MEDIUM",
     created: asDate(reviewCase.created_at),
+    startedAt: deriveStartedAt(reviewCase),
+    dueAt: asDate(reviewCase.due_at),
+    completedAt: deriveCompletedAt(reviewCase),
     reviewer: deriveReviewer(reviewCase),
     status: mapCaseStatus(reviewCase),
     amount: toUnits(reviewCase.observed_amount_cents),

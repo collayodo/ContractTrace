@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 
 from fastapi.testclient import TestClient
 
@@ -165,6 +165,40 @@ def test_case_investigation_and_resolution_keep_audit_record() -> None:
         f"/cases/{case_id}/investigation",
         json={"actor": "reviewer@example.gov", "action": "edit", "note": "Should be blocked"},
     ).status_code == 409
+
+
+def test_reconciliation_stamps_configurable_sla_due_dates(monkeypatch) -> None:
+    monkeypatch.setenv("SLA_WINDOW_DAYS_MEDIUM", "21")
+    client = make_client()
+    result = client.post("/reconcile", params={"as_of": "2026-12-31"}).json()
+    high = next(item for item in result["flags"] if item["exception_type"] == "invoice_over_contract")
+    medium = next(item for item in result["flags"] if item["exception_type"] == "payment_mismatch")
+
+    # HIGH (cap overrun) keeps the 7-day default; MEDIUM picks up the override.
+    assert (datetime.fromisoformat(high["due_at"]) - datetime.fromisoformat(high["created_at"])).days == 7
+    assert (datetime.fromisoformat(medium["due_at"]) - datetime.fromisoformat(medium["created_at"])).days == 21
+
+    # The due date is a stable commitment: re-running reconciliation must not move it.
+    rerun = client.post("/reconcile", params={"as_of": "2026-12-31"}).json()
+    rerun_high = next(item for item in rerun["flags"] if item["id"] == high["id"])
+    assert rerun_high["due_at"] == high["due_at"]
+
+
+def test_investigation_stamps_started_at_only_once() -> None:
+    client = make_client()
+    case_id = client.post("/reconcile", params={"as_of": "2026-12-31"}).json()["flags"][0]["id"]
+
+    assert client.get(f"/cases/{case_id}").json()["started_at"] is None
+    first = client.post(
+        f"/cases/{case_id}/investigation",
+        json={"action": "open_review", "note": "Begin the review."},
+    ).json()
+    assert first["started_at"] is not None
+    second = client.post(
+        f"/cases/{case_id}/investigation",
+        json={"action": "follow_up", "note": "Second note."},
+    ).json()
+    assert second["started_at"] == first["started_at"]
 
 
 def test_ai_analysis_accepts_contract_id_when_it_has_one_case(monkeypatch) -> None:

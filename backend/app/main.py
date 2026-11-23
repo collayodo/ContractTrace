@@ -159,6 +159,8 @@ def create_app(store: Store | None = None) -> FastAPI:
         if case.status == CaseStatus.resolved:
             raise HTTPException(status_code=409, detail="Resolved cases cannot be changed")
         status_before = case.status.value
+        if case.started_at is None:
+            case.started_at = utc_now()
         case.investigation.append(
             InvestigationEntry(
                 actor=principal.user_id,
