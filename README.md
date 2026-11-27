@@ -102,6 +102,14 @@ npm run dev
 
 With `VITE_API_BASE_URL` set, the dashboard shows the auditor sign-in screen, obtains a bearer token from `POST /auth/dev-login`, and loads live data. If the API is unreachable it falls back to the bundled dataset and shows a banner with a retry action.
 
+### Persisting auditor sign-offs
+
+Auditor determinations (`confirmed_issue` / `dismissed`) are written to the backend's `cases` collection and appended to the hash-chained `audit_log`, so they survive page reloads. For that to happen:
+
+- The frontend must run with `VITE_API_BASE_URL` set (see `frontend/.env.example`), otherwise it stays in mock mode and sign-offs live only in temporary React state, resetting on reload.
+- The backend must run with `STORAGE_BACKEND=firestore` so cases are written to Firestore rather than the in-memory store (which resets when the server restarts).
+- In production, run with `SEED_DEMO_DATA=false` so startup seeding does not overwrite live records (seeding only writes missing contracts, amendments, invoices, and payments — never cases — but set it to `false` to be safe).
+
 ## Configuration
 
 ### Backend (`backend/.env`)

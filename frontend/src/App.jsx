@@ -1,3 +1,4 @@
+import SlaBurndownPanel from "./components/SlaBurndownPanel";
 import { useMemo, useState, useEffect } from "react";
 import Icon from "./components/Icon";
 import {
@@ -2570,6 +2571,7 @@ function Analytics({ decisions }) {
           </table>
         </div>
       </Card>
+      <SlaBurndownPanel flags={flags} decisions={decisions} />
     </div>
   );
 }
