@@ -287,7 +287,7 @@ function AuditorLogin({ onLogin, busy = false, errorMessage = "" }) {
 // MAIN APPLICATION
 // ==========================================
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || "https://contracttrace-api-623186002597.africa-south1.run.app").replace(/\/$/, "");
 
 function loadSavedState(key, fallback) {
   try {
