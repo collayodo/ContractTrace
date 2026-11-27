@@ -90,8 +90,28 @@ export function AuditDataProvider({ children }) {
   );
 
   useEffect(() => {
-    if (mode === "live" && token) load(token);
-    return () => controllerRef.current?.abort();
+    let cancelled = false;
+    async function initSession() {
+      if (mode !== "live") return;
+      if (token) {
+        load(token);
+        return;
+      }
+      try {
+        const result = await api.devLogin("aud-urvashi-01", "reviewer");
+        if (!cancelled && result?.access_token) {
+          storeToken(result.access_token);
+          setToken(result.access_token);
+        }
+      } catch (err) {
+        if (!cancelled) setError(err?.message || "Auto-session failed");
+      }
+    }
+    initSession();
+    return () => {
+      cancelled = true;
+      controllerRef.current?.abort();
+    };
   }, [mode, token, load]);
 
   const login = useCallback(

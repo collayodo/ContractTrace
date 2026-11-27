@@ -4,7 +4,7 @@
 // is set. When it is set, every read and write below goes to the live API using
 // a bearer token obtained from POST /auth/dev-login (see dataContext.jsx).
 
-const RAW_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").trim();
+const RAW_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "https://contracttrace-api-623186002597.africa-south1.run.app").trim();
 
 export const API_BASE_URL = RAW_BASE_URL.replace(/\/+$/, "");
 export const isApiConfigured = API_BASE_URL.length > 0;
@@ -73,7 +73,7 @@ async function request(path, { method = "GET", body, token, signal } = {}) {
 
 export const api = {
   devLogin: (userId, role) =>
-    request("/auth/dev-login", { method: "POST", body: { user_id: userId, role } }),
+    request("/auth/session", { method: "POST", body: { user_id: userId, role } }),
   listContracts: (token, signal) => request("/contracts", { token, signal }),
   contractEvidence: (token, contractId, signal) =>
     request(`/contracts/${encodeURIComponent(contractId)}/evidence`, { token, signal }),
