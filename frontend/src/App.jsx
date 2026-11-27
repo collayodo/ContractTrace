@@ -12,19 +12,8 @@ import {
   SeverityBadge,
   StatusBadge,
 } from "./components/UI";
-import {
-  AUDITORS,
-  contracts,
-  flags,
-  formatDate,
-  formatMoney,
-  invoices,
-  payments,
-  amendments,
-  initialAuditHistory,
-  RULE_CATALOG,
-  getRuleMeta,
-} from "./data/mockData";
+import { AUDITORS, formatDate, formatMoney, RULE_CATALOG, getRuleMeta } from "./data/mockData";
+import { useAuditData } from "./api/dataContext";
 
 const nav = [
   ["overview", "Overview", "grid"],
@@ -91,7 +80,7 @@ function getResolvedAmendment(contract, allAmendments, eligibleTotal, flagRule) 
 // AUDITOR LOGIN SCREEN
 // ==========================================
 
-function AuditorLogin({ onLogin }) {
+function AuditorLogin({ onLogin, busy = false, errorMessage = "" }) {
   const [selectedUid, setSelectedUid] = useState(AUDITORS[0].uid);
   const [emailInput, setEmailInput] = useState(AUDITORS[0].email);
   const [passwordInput, setPasswordInput] = useState("••••••••••••");
@@ -101,10 +90,14 @@ function AuditorLogin({ onLogin }) {
     setEmailInput(aud.email);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const auditor = AUDITORS.find((a) => a.uid === selectedUid) || AUDITORS[0];
-    onLogin(auditor);
+    try {
+      await onLogin(auditor);
+    } catch {
+      // The provider surfaces the failure through errorMessage.
+    }
   };
 
   return (
@@ -148,6 +141,23 @@ function AuditorLogin({ onLogin }) {
         <p style={{ fontSize: "13px", color: "#64748b", marginBottom: "20px", lineHeight: 1.5 }}>
           Sign in with your accredited auditor credentials. All flag assignments, confirmations, and dismissals are stamped with your Auditor UID.
         </p>
+
+        {errorMessage && (
+          <div
+            style={{
+              marginBottom: "16px",
+              padding: "10px 12px",
+              borderRadius: "8px",
+              border: "1px solid #fecaca",
+              background: "#fef2f2",
+              color: "#b91c1c",
+              fontSize: "12.5px",
+              lineHeight: 1.5,
+            }}
+          >
+            {errorMessage}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} style={{ display: "grid", gap: "14px" }}>
           <div style={{ minWidth: 0 }}>
@@ -262,9 +272,10 @@ function AuditorLogin({ onLogin }) {
           <button
             type="submit"
             className="button primary"
-            style={{ width: "100%", height: "40px", marginTop: "4px", fontWeight: 600 }}
+            disabled={busy}
+            style={{ width: "100%", height: "40px", marginTop: "4px", fontWeight: 600, opacity: busy ? 0.7 : 1 }}
           >
-            Sign In as {AUDITORS.find((a) => a.uid === selectedUid)?.name} →
+            {busy ? "Authenticating…" : `Sign In as ${AUDITORS.find((a) => a.uid === selectedUid)?.name} →`}
           </button>
         </form>
       </div>
@@ -288,8 +299,20 @@ function loadSavedState(key, fallback) {
 }
 
 export default function App() {
+  const {
+    flags,
+    mode,
+    source,
+    loading,
+    error: dataError,
+    hasLiveToken,
+    login,
+    logout,
+    resolveCase,
+    refresh,
+  } = useAuditData();
   const [currentAuditor, setCurrentAuditor] = useState(AUDITORS[0]);
-  const [isAuthenticated, setIsAuthenticated] = useState(true); // Set to false if you want login screen first on load
+  const [forceLogin, setForceLogin] = useState(false);
   const [page, setPage] = useState("overview");
   const [selectedFlagId, setSelectedFlagId] = useState(flags[0]?.id || "");
   const [selectedContractId, setSelectedContractId] = useState("");
@@ -372,7 +395,14 @@ export default function App() {
 
   const activeFlags = useMemo(() => {
     return flags.filter((f) => (decisions[f.id]?.status || f.status) === "ACTIVE");
-  }, [decisions]);
+  }, [flags, decisions]);
+
+  // Keep the workbench selection valid when the dataset switches (mock -> live).
+  useEffect(() => {
+    if (flags.length > 0 && !flags.some((f) => f.id === selectedFlagId)) {
+      setSelectedFlagId(flags[0].id);
+    }
+  }, [flags, selectedFlagId]);
 
   const currentFlag = flags.find((f) => f.id === selectedFlagId) || flags[0];
 
@@ -412,34 +442,27 @@ export default function App() {
       ...prev,
       [flagId]: entry,
     }));
-
-    if (API_BASE && authToken) {
+    if (mode === "live") {
+      const determination = newStatus === "CONFIRMED" ? "confirmed_issue" : "dismissed";
       try {
-        const determination =
-          newStatus === "CONFIRMED" ? "confirmed_issue" : "dismissed";
-        await fetch(`${API_BASE}/cases/${encodeURIComponent(flagId)}/resolve`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${authToken}`,
-          },
-          body: JSON.stringify({
-            determination,
-            note: notesText || "Auditor sign-off recorded via Reviewer Workbench.",
-          }),
-        });
-      } catch (err) {
-        console.warn("Cloud Run resolve call failed:", err);
+        await resolveCase(flagId, determination, notesText);
+      } catch (thrown) {
+        // The banner surfaces the API error; keep the local record so the auditor sees their note.
       }
     }
   };
 
-  if (!isAuthenticated) {
+  const needsLogin = (mode === "live" && !hasLiveToken) || forceLogin;
+
+  if (needsLogin) {
     return (
       <AuditorLogin
-        onLogin={(aud) => {
+        busy={loading}
+        errorMessage={dataError}
+        onLogin={async (aud) => {
+          if (mode === "live") await login(aud);
           setCurrentAuditor(aud);
-          setIsAuthenticated(true);
+          setForceLogin(false);
         }}
       />
     );
@@ -453,7 +476,14 @@ export default function App() {
       flags={flags}
       decisions={decisions}
       currentAuditor={currentAuditor}
-      onSwitchAuditor={() => setIsAuthenticated(false)}
+      source={source}
+      loading={loading}
+      dataError={dataError}
+      onRetry={refresh}
+      onSwitchAuditor={() => {
+        if (mode === "live") logout();
+        setForceLogin(true);
+      }}
       globalSearch={globalSearch}
       setGlobalSearch={setGlobalSearch}
       onOpenRules={() => setShowRulesModal(true)}
@@ -578,6 +608,10 @@ function Shell({
   flags,
   decisions,
   currentAuditor,
+  source,
+  loading,
+  dataError,
+  onRetry,
   onSwitchAuditor,
   globalSearch,
   setGlobalSearch,
@@ -586,6 +620,7 @@ function Shell({
   onSelectNotification,
   children,
 }) {
+  const { contracts } = useAuditData();
   const [mobile, setMobile] = useState(false);
   const [notice, setNotice] = useState(false);
   const [profile, setProfile] = useState(false);
@@ -631,7 +666,7 @@ function Shell({
         subtitle: getRuleMeta(f.rule).shortName,
       }));
     return [...matchedFlags, ...matchedContracts].slice(0, 6);
-  }, [globalSearch, flags]);
+  }, [globalSearch, flags, contracts]);
 
   return (
     <div className="app-shell">
@@ -801,6 +836,40 @@ function Shell({
           </span>
           <span style={{ fontSize: "11.5px", color: "#64748b" }}>UN SDG Target 16.6</span>
         </div>
+        {(source === "api" || loading || dataError) && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "12px",
+              margin: "0 24px",
+              padding: "8px 12px",
+              borderRadius: "8px",
+              fontSize: "12px",
+              border: dataError ? "1px solid #fecaca" : "1px solid #bbf7d0",
+              background: dataError ? "#fef2f2" : "#f0fdf4",
+              color: dataError ? "#b91c1c" : "#15803d",
+            }}
+          >
+            <span>
+              {loading
+                ? "Loading live audit data from the ContractTrace API…"
+                : dataError
+                ? `${dataError} Showing bundled demo data instead.`
+                : "Live data connected to the ContractTrace API."}
+            </span>
+            {!loading && (
+              <button
+                className="text-button"
+                style={{ fontSize: "12px" }}
+                onClick={onRetry}
+              >
+                {dataError ? "Retry connection" : "Refresh"}
+              </button>
+            )}
+          </div>
+        )}
         <div className="content">{children}</div>
       </main>
     </div>
@@ -808,21 +877,22 @@ function Shell({
 }
 
 function Overview({ go, decisions, assignments, selectFlag }) {
+  const { flags, contracts, invoices } = useAuditData();
   const activeFlags = useMemo(
     () => flags.filter((f) => (decisions[f.id]?.status || f.status) === "ACTIVE"),
-    [decisions]
+    [flags, decisions]
   );
   const confirmedFlags = useMemo(
     () => flags.filter((f) => (decisions[f.id]?.status || f.status) === "CONFIRMED"),
-    [decisions]
+    [flags, decisions]
   );
   const dismissedFlags = useMemo(
     () => flags.filter((f) => (decisions[f.id]?.status || f.status) === "DISMISSED"),
-    [decisions]
+    [flags, decisions]
   );
   const resolvedFlags = useMemo(
     () => flags.filter((f) => (decisions[f.id]?.status || f.status) === "RESOLVED_BY_AMENDMENT"),
-    [decisions]
+    [flags, decisions]
   );
 
   const humanDecisionsCount = confirmedFlags.length + dismissedFlags.length;
@@ -832,7 +902,7 @@ function Overview({ go, decisions, assignments, selectFlag }) {
 
   const totalPortfolioCap = useMemo(
     () => contracts.reduce((sum, c) => sum + c.cap, 0),
-    []
+    [contracts]
   );
 
   const kpis = [
@@ -1065,20 +1135,24 @@ function Workbench({
   selectContract,
   go,
 }) {
+  const { contracts, flags, invoices, payments, amendments, analyzeCase, hasLiveToken } = useAuditData();
   const [tab, setTab] = useState("Investigation");
   const [notes, setNotes] = useState("");
   const [modal, setModal] = useState(null);
   const [error, setError] = useState("");
+  const [analysis, setAnalysis] = useState(null);
+  const [analysisError, setAnalysisError] = useState("");
+  const [analysisBusy, setAnalysisBusy] = useState(false);
 
   const effectiveContractId = contractIdOverride || flag?.contract || contracts[0]?.id;
   const selectedContract = useMemo(
     () => contracts.find((c) => c.id === effectiveContractId) || contracts[0],
-    [effectiveContractId]
+    [contracts, effectiveContractId]
   );
 
   const contractFlags = useMemo(
     () => flags.filter((f) => f.contract === selectedContract?.id),
-    [selectedContract]
+    [flags, selectedContract]
   );
 
   const [localFlagId, setLocalFlagId] = useState(flag?.id);
@@ -1095,6 +1169,9 @@ function Workbench({
     setError("");
     setModal(null);
     setTab("Investigation");
+    setAnalysis(null);
+    setAnalysisError("");
+    setAnalysisBusy(false);
   }, [selectedContract, flag, contractFlags]);
 
   const associatedFlag = useMemo(() => {
@@ -1107,15 +1184,15 @@ function Workbench({
 
   const relatedInvoices = useMemo(
     () => invoices.filter((i) => i.contract === selectedContract?.id),
-    [selectedContract]
+    [invoices, selectedContract]
   );
   const relatedPayments = useMemo(
     () => payments.filter((p) => p.contract === selectedContract?.id),
-    [selectedContract]
+    [payments, selectedContract]
   );
   const relatedAmendments = useMemo(
     () => amendments.filter((a) => a.contract === selectedContract?.id),
-    [selectedContract]
+    [amendments, selectedContract]
   );
 
   const eligibleInvoices = useMemo(
@@ -1184,6 +1261,21 @@ function Workbench({
     setModal(null);
     setError("");
     setNotes("");
+  };
+
+  const runAnalysis = async () => {
+    if (!associatedFlag) return;
+    setAnalysisBusy(true);
+    setAnalysisError("");
+    try {
+      const result = await analyzeCase(associatedFlag.id);
+      if (result) setAnalysis(result);
+      else setAnalysisError("AI analysis needs a live backend connection.");
+    } catch (thrown) {
+      setAnalysisError(thrown?.message || "AI analysis failed.");
+    } finally {
+      setAnalysisBusy(false);
+    }
   };
 
   const ruleMeta = getRuleMeta(
@@ -1585,6 +1677,57 @@ function Workbench({
                 </dl>
               </Card>
 
+              {associatedFlag && (
+                <Card>
+                  <CardHeader
+                    title="AI Case Analysis"
+                    icon="note"
+                    subtitle="A neutral draft summary of the recorded evidence — never a finding"
+                  />
+                  <div style={{ padding: "0 18px 18px" }}>
+                    <button className="button" onClick={runAnalysis} disabled={!hasLiveToken || analysisBusy}>
+                      <Icon name="note" size={15} />
+                      <strong>{analysisBusy ? "Analyzing…" : "Analyze with AI"}</strong>
+                    </button>
+                    {!hasLiveToken && (
+                      <small style={{ display: "block", marginTop: "8px", color: "#64748b" }}>
+                        Connect the dashboard to the live API to run AI analysis.
+                      </small>
+                    )}
+                    {analysisError && (
+                      <span style={{ display: "block", marginTop: "10px", color: "#be123c", fontSize: "12.5px" }}>
+                        {analysisError}
+                      </span>
+                    )}
+                    {analysis && (
+                      <div style={{ marginTop: "12px", display: "grid", gap: "10px" }}>
+                        <p style={{ margin: 0, fontSize: "12.5px", color: "#334155" }}>{analysis.summary}</p>
+                        {analysis.evidence_observations?.length > 0 && (
+                          <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "12.5px", color: "#334155" }}>
+                            {analysis.evidence_observations.map((item, index) => (
+                              <li key={index}>{item}</li>
+                            ))}
+                          </ul>
+                        )}
+                        <div
+                          style={{
+                            background: "#fffbeb",
+                            border: "1px solid #fde68a",
+                            borderRadius: "8px",
+                            padding: "10px 12px",
+                            fontSize: "12px",
+                            color: "#92400e",
+                          }}
+                        >
+                          <strong>Limitation:</strong> {analysis.limitation}
+                        </div>
+                        <small style={{ color: "#64748b" }}>Model: {analysis.model}</small>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              )}
+
               <div className="human-note">
                 <Icon name="help" size={18} />
                 <p>
@@ -1743,6 +1886,7 @@ function Workbench({
 }
 
 function ContractsPage({ go, decisions, globalSearch, selectContract }) {
+  const { contracts, invoices, payments, flags } = useAuditData();
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [drawerContract, setDrawerContract] = useState(null);
 
@@ -1764,7 +1908,7 @@ function ContractsPage({ go, decisions, globalSearch, selectContract }) {
         effectiveStatus,
       };
     });
-  }, [decisions]);
+  }, [contracts, invoices, payments, flags, decisions]);
 
   const filtered = enrichedContracts.filter((c) => {
     const q = (globalSearch || "").toLowerCase();
@@ -1959,6 +2103,7 @@ function ContractsPage({ go, decisions, globalSearch, selectContract }) {
 }
 
 function FlagsPage({ decisions, assignments, onAssignAuditor, globalSearch, selectFlag }) {
+  const { flags } = useAuditData();
   const [ruleFilter, setRuleFilter] = useState("ALL");
 
   const filtered = flags.filter((f) => {
@@ -2078,18 +2223,115 @@ function FlagsPage({ decisions, assignments, onAssignAuditor, globalSearch, sele
 }
 
 function Analytics({ decisions }) {
+  const { flags, contracts, payments, invoices } = useAuditData();
   const confirmed = flags.filter((f) => (decisions[f.id]?.status || f.status) === "CONFIRMED").length;
   const dismissed = flags.filter((f) => (decisions[f.id]?.status || f.status) === "DISMISSED").length;
   const resolved = flags.filter((f) => (decisions[f.id]?.status || f.status) === "RESOLVED_BY_AMENDMENT").length;
 
   const totalAuthorizedCap = contracts.reduce((s, c) => s + c.cap, 0);
   const totalDisbursed = payments.reduce((s, p) => s + p.amount, 0);
-  const blockedAmount = invoices
-    .filter((i) => i.status === "Flagged" && (i.contract === "CNT-2026-002" || i.contract === "CNT-2026-008"))
-    .reduce((s, i) => s + i.amount, 0);
+  const blockedAmount = flags
+    .filter((f) => f.rule === "RULE_1_OVERBILL" && (decisions[f.id]?.status || f.status) === "ACTIVE")
+    .reduce((s, f) => s + (f.amount || 0), 0);
 
   const rule1Count = flags.filter((f) => f.rule === "RULE_1_OVERBILL" && f.status === "ACTIVE").length;
   const rule2Count = flags.filter((f) => f.rule === "RULE_2_TEMPORAL").length;
+
+  const sla = useMemo(() => {
+    const DAY_MS = 86400000;
+    const today = new Date().toISOString().slice(0, 10);
+    const toIso = (value) => (value ? String(value).slice(0, 10) : "");
+    const diffDays = (from, to) =>
+      from && to ? Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS) : null;
+    const average = (values) => (values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0);
+
+    const rows = flags.map((f) => {
+      const decision = decisions[f.id];
+      const status = decision?.status || f.status;
+      const completed = decision?.timestamp
+        ? toIso(decision.timestamp)
+        : toIso(f.completedAt || (status === "RESOLVED_BY_AMENDMENT" ? f.resolvedAt : ""));
+      const created = toIso(f.created);
+      const started = toIso(f.startedAt);
+      const due = toIso(f.dueAt);
+      let slaState = { label: "—", className: "severity-low" };
+      if (completed && due) {
+        slaState =
+          completed <= due
+            ? { label: "Met", className: "severity-low" }
+            : { label: "Breached", className: "severity-critical" };
+      } else if (completed) {
+        slaState = { label: "—", className: "severity-low" };
+      } else if (due) {
+        slaState =
+          due < today
+            ? { label: `Overdue ${diffDays(due, today)}d`, className: "severity-critical" }
+            : { label: `Due in ${diffDays(today, due)}d`, className: "severity-medium" };
+      }
+      const cycle = completed ? diffDays(created, completed) : diffDays(created, today);
+      return { id: f.id, contract: f.contract, rule: f.rule, severity: f.severity || "MEDIUM", status, created, started, due, completed, cycle, slaState };
+    });
+
+    const completedRows = rows.filter((r) => r.completed);
+    const openRows = rows.filter((r) => !r.completed);
+    const cycleTimes = completedRows.map((r) => diffDays(r.created, r.completed)).filter((n) => n !== null);
+    const sortedCycle = [...cycleTimes].sort((a, b) => a - b);
+    const medianCycle = sortedCycle.length
+      ? sortedCycle.length % 2
+        ? sortedCycle[(sortedCycle.length - 1) / 2]
+        : (sortedCycle[sortedCycle.length / 2 - 1] + sortedCycle[sortedCycle.length / 2]) / 2
+      : 0;
+
+    const overdue = openRows.filter((r) => r.due && r.due < today);
+    const dueSoon = openRows.filter((r) => r.due && r.due >= today && diffDays(today, r.due) <= 2);
+    const breached = completedRows.filter((r) => r.due && r.completed > r.due).length;
+    const attainment = completedRows.length
+      ? Math.round(((completedRows.length - breached) / completedRows.length) * 100)
+      : 100;
+
+    const avgTriage = average(rows.map((r) => diffDays(r.created, r.started)).filter((n) => n !== null && n >= 0));
+    const avgInvestigate = average(rows.map((r) => diffDays(r.started, r.completed)).filter((n) => n !== null && n >= 0));
+    const awaitingTriage = openRows.filter((r) => !r.started).length;
+    const inInvestigation = openRows.filter((r) => r.started).length;
+    const avgAge = average(openRows.map((r) => diffDays(r.created, today)).filter((n) => n !== null));
+
+    // Monthly burndown: cases still open at the end of each month.
+    const dates = rows.flatMap((r) => [r.created, r.completed]).filter(Boolean).sort();
+    const firstMonth = (dates[0] || today).slice(0, 7);
+    const lastMonth = (dates[dates.length - 1] || today).slice(0, 7);
+    const endMonth = lastMonth > today.slice(0, 7) ? lastMonth : today.slice(0, 7);
+    const burndown = [];
+    const cursor = new Date(`${firstMonth}-01T00:00:00Z`);
+    const stop = new Date(`${endMonth}-01T00:00:00Z`);
+    while (cursor <= stop && burndown.length < 18) {
+      const next = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1));
+      const monthEnd = new Date(next.getTime() - DAY_MS).toISOString().slice(0, 10);
+      const opened = rows.filter((r) => r.created && r.created <= monthEnd).length;
+      const done = rows.filter((r) => r.completed && r.completed <= monthEnd).length;
+      burndown.push({ label: cursor.toLocaleString("en-US", { month: "short" }), remaining: Math.max(opened - done, 0) });
+      cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+    }
+
+    return {
+      rows,
+      openRows,
+      completedRows,
+      avgCycle: average(cycleTimes),
+      medianCycle,
+      overdue,
+      dueSoon,
+      breached,
+      attainment,
+      avgTriage,
+      avgInvestigate,
+      awaitingTriage,
+      inInvestigation,
+      avgAge,
+      burndown,
+      throughput: (completedRows.length / Math.max(burndown.length, 1)).toFixed(1),
+      completedCount: completedRows.length,
+    };
+  }, [flags, decisions]);
 
   return (
     <div className="page-stack">
@@ -2135,6 +2377,181 @@ function Analytics({ decisions }) {
           </div>
         </Card>
       </div>
+
+      <div className="section-heading">
+        <div>
+          <h2>Review-Batch SLA, Cycle Time &amp; Burndown</h2>
+          <p>Lifecycle timestamps, cycle-time distribution, monthly burndown, overdue exposure, and stage bottlenecks</p>
+        </div>
+      </div>
+
+      <div className="kpi-grid">
+        <Card className="kpi">
+          <div className="kpi-icon blue">
+            <Icon name="clock" size={18} />
+          </div>
+          <div>
+            <span>Average Cycle Time</span>
+            <strong>{sla.avgCycle.toFixed(1)} d</strong>
+            <small>{sla.completedCount} resolved cases · created → completed</small>
+          </div>
+        </Card>
+        <Card className="kpi">
+          <div className="kpi-icon slate">
+            <Icon name="chart" size={18} />
+          </div>
+          <div>
+            <span>Median Cycle Time</span>
+            <strong>{sla.medianCycle.toFixed(1)} d</strong>
+            <small>Half of the batch closes faster than this</small>
+          </div>
+        </Card>
+        <Card className="kpi">
+          <div className="kpi-icon green">
+            <Icon name="check" size={18} />
+          </div>
+          <div>
+            <span>SLA Attainment</span>
+            <strong>{sla.attainment}%</strong>
+            <small>
+              {sla.breached} of {sla.completedCount} resolved past due
+            </small>
+          </div>
+        </Card>
+        <Card className="kpi">
+          <div className="kpi-icon red">
+            <Icon name="flag" size={18} />
+          </div>
+          <div>
+            <span>Overdue Cases</span>
+            <strong>{sla.overdue.length}</strong>
+            <small>{sla.dueSoon.length} more due within 2 days</small>
+          </div>
+        </Card>
+      </div>
+
+      <div className="analytics-grid">
+        <Card>
+          <CardHeader
+            title="Review Burndown"
+            icon="chart"
+            subtitle="Cases still open at the end of each month"
+            action={<span style={{ fontSize: 12, color: "var(--muted)" }}>Throughput {sla.throughput}/mo</span>}
+          />
+          <div className="horizontal-bars">
+            {(() => {
+              const max = Math.max(...sla.burndown.map((p) => p.remaining), 1);
+              return sla.burndown.map((point, index) => (
+                <div key={`${point.label}-${index}`}>
+                  <span>{point.label}</span>
+                  <div>
+                    <i
+                      style={{
+                        width: `${point.remaining > 0 ? Math.max((point.remaining / max) * 100, 8) : 0}%`,
+                        background: point.remaining > 0 ? "#1d4ed8" : "#cbd5e1",
+                      }}
+                    />
+                  </div>
+                  <strong>{point.remaining}</strong>
+                </div>
+              ));
+            })()}
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="Stage Bottlenecks"
+            icon="clock"
+            subtitle="Average days spent in each review stage"
+          />
+          <div className="horizontal-bars">
+            {(() => {
+              const stages = [
+                ["Triage · created → started", sla.avgTriage, "#ea580c"],
+                ["Investigation · started → resolved", sla.avgInvestigate, "#e11d48"],
+                ["Open backlog · current age", sla.avgAge, "#1d4ed8"],
+              ];
+              const max = Math.max(...stages.map((stage) => stage[1]), 1);
+              return stages.map(([label, value, color]) => (
+                <div key={label}>
+                  <span>{label}</span>
+                  <div>
+                    <i
+                      style={{
+                        width: `${value > 0 ? Math.max((value / max) * 100, 8) : 0}%`,
+                        background: color,
+                      }}
+                    />
+                  </div>
+                  <strong>{value.toFixed(1)}d</strong>
+                </div>
+              ));
+            })()}
+          </div>
+          <div className="legend-row">
+            <span>
+              <i className="orange" /> {sla.awaitingTriage} awaiting triage
+            </span>
+            <span>
+              <i className="red" /> {sla.inInvestigation} in investigation
+            </span>
+            <span>
+              <i className="blue" /> {sla.openRows.length} open of {sla.rows.length}
+            </span>
+          </div>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader
+          title="Case Cycle-Time & SLA Register"
+          icon="flag"
+          subtitle="Created, started, due and completed timestamps with per-case SLA outcome"
+        />
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Case</th>
+                <th>Contract</th>
+                <th>Rule</th>
+                <th>Severity</th>
+                <th>Created</th>
+                <th>Started</th>
+                <th>Due</th>
+                <th>Completed</th>
+                <th className="right">Cycle</th>
+                <th>SLA</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sla.rows.map((row) => (
+                <tr key={row.id}>
+                  <td>
+                    <code>{row.id}</code>
+                  </td>
+                  <td>
+                    <code>{row.contract}</code>
+                  </td>
+                  <td>{getRuleMeta(row.rule).shortName}</td>
+                  <td>
+                    <SeverityBadge severity={row.severity} />
+                  </td>
+                  <td>{row.created ? formatDate(row.created) : "—"}</td>
+                  <td>{row.started ? formatDate(row.started) : "—"}</td>
+                  <td>{row.due ? formatDate(row.due) : "—"}</td>
+                  <td>{row.completed ? formatDate(row.completed) : "—"}</td>
+                  <td className="right num">{row.cycle === null ? "—" : `${row.cycle}d`}</td>
+                  <td>
+                    <span className={`severity ${row.slaState.className}`}>{row.slaState.label}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
 
       <div className="analytics-grid">
         <Card>
@@ -2238,6 +2655,7 @@ function Analytics({ decisions }) {
 }
 
 function HistoryPage({ decisions, assignmentLogs, globalSearch }) {
+  const { flags, auditHistory } = useAuditData();
   const combinedHistory = useMemo(() => {
     const humanEntries = Object.entries(decisions).map(([caseId, data], i) => {
       const f = flags.find((item) => item.id === caseId);
@@ -2253,12 +2671,12 @@ function HistoryPage({ decisions, assignmentLogs, globalSearch }) {
         note: data.notes,
       };
     });
-    const normalizedInitial = initialAuditHistory.map((item) => ({
+    const normalizedInitial = auditHistory.map((item) => ({
       ...item,
-      auditor: item.actor,
+      auditor: item.auditor || item.actor,
     }));
     return [...humanEntries, ...assignmentLogs, ...normalizedInitial];
-  }, [decisions, assignmentLogs]);
+  }, [decisions, assignmentLogs, flags, auditHistory]);
 
   const filteredHistory = combinedHistory.filter((evt) => {
     const q = (globalSearch || "").toLowerCase();

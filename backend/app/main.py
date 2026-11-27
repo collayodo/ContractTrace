@@ -7,7 +7,7 @@ import httpx
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.ai import analyze_case
 from app.audit import append_audit, list_entries, verify_chain
@@ -44,10 +44,9 @@ def create_app(store: Store | None = None) -> FastAPI:
         openapi_url=None if production else "/openapi.json",
     )
     app.state.store = repository
-
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=_cors_origins(),
         allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -74,6 +73,19 @@ def create_app(store: Store | None = None) -> FastAPI:
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.post("/auth/dev-login", description=("Local development only. Disabled when APP_ENV=production."))
+    def dev_login(request: DevLoginRequest) -> dict[str, Any]:
+        if production:
+            raise HTTPException(status_code=404, detail="Not found")
+        token = issue_token(request.user_id, request.role, ttl_seconds=DEV_TOKEN_TTL_SECONDS)
+        return {
+            "access_token": token,
+            "token_type": "bearer",
+            "expires_in": DEV_TOKEN_TTL_SECONDS,
+            "user_id": request.user_id,
+            "role": request.role.value,
+        }
 
     @app.get("/contracts", dependencies=[Depends(require(Permission.contracts_read))])
     def list_contracts() -> list[dict[str, Any]]:
@@ -165,6 +177,8 @@ def create_app(store: Store | None = None) -> FastAPI:
         if case.status == CaseStatus.resolved:
             raise HTTPException(status_code=409, detail="Resolved cases cannot be changed")
         status_before = case.status.value
+        if case.started_at is None:
+            case.started_at = utc_now()
         case.investigation.append(
             InvestigationEntry(
                 actor=principal.user_id,
@@ -264,6 +278,20 @@ def create_app(store: Store | None = None) -> FastAPI:
             raise HTTPException(status_code=502, detail="NVIDIA analysis request failed") from error
 
     return app
+
+
+DEV_TOKEN_TTL_SECONDS = 3600
+DEFAULT_CORS_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
+
+
+class DevLoginRequest(BaseModel):
+    user_id: str = Field(min_length=1, max_length=120)
+    role: Role = Role.reviewer
+
+
+def _cors_origins() -> list[str]:
+    raw = os.getenv("CORS_ALLOW_ORIGINS", DEFAULT_CORS_ORIGINS)
+    return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
 
 def _get_case(store: Store, case_id: str) -> ReviewCase:

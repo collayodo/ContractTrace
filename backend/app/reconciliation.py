@@ -1,4 +1,5 @@
-from datetime import date, datetime, timezone
+import os
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from app.audit import append_audit
@@ -13,6 +14,25 @@ from app.models import (
     ReviewCase,
 )
 from app.store import Store
+
+# Review SLA policy. Cap-overrun cases are treated as HIGH severity with a
+# tighter window; disbursement discrepancies get a longer MEDIUM window. Windows
+# are configurable through the environment so a deployment can tune them.
+HIGH_SEVERITY_EXCEPTIONS = {ExceptionType.invoice_over_contract}
+SLA_DEFAULT_DAYS = {"high": 7, "medium": 14}
+
+
+def sla_window_days(exception_type: ExceptionType) -> int:
+    severity = "high" if exception_type in HIGH_SEVERITY_EXCEPTIONS else "medium"
+    default = SLA_DEFAULT_DAYS[severity]
+    raw = os.getenv(f"SLA_WINDOW_DAYS_{severity.upper()}")
+    if raw is None:
+        return default
+    try:
+        days = int(raw)
+    except ValueError:
+        return default
+    return days if days > 0 else default
 
 
 def reconcile(store: Store, as_of: date) -> dict[str, Any]:
@@ -131,6 +151,8 @@ def reconcile(store: Store, as_of: date) -> dict[str, Any]:
             finding.investigation = previous.investigation
             finding.resolution_note = previous.resolution_note
             finding.created_at = previous.created_at
+            finding.started_at = previous.started_at
+            finding.due_at = previous.due_at
             finding.updated_at = previous.updated_at
 
     return {
@@ -163,5 +185,6 @@ def _finding(
         expected_amount_cents=expected_amount_cents,
         status=CaseStatus.open,
         created_at=now,
+        due_at=now + timedelta(days=sla_window_days(exception_type)),
         updated_at=now,
     )

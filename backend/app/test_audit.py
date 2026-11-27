@@ -12,7 +12,7 @@ def make_client() -> tuple[TestClient, MemoryStore]:
 
 
 def open_case(client: TestClient) -> dict:
-    flags = client.post("/reconcile", params={"as_of": "2025-12-31"}).json()["flags"]
+    flags = client.post("/reconcile", params={"as_of": "2026-12-31"}).json()["flags"]
     return flags[0]
 
 
@@ -25,7 +25,7 @@ def test_empty_log_is_valid() -> None:
 
 def test_reconcile_logs_why_each_flag_appeared() -> None:
     client, _ = make_client()
-    result = client.post("/reconcile", params={"as_of": "2025-12-31"}).json()
+    result = client.post("/reconcile", params={"as_of": "2026-12-31"}).json()
     entries = client.get("/audit").json()
 
     assert len(entries) == result["flag_count"]
@@ -39,9 +39,9 @@ def test_reconcile_logs_why_each_flag_appeared() -> None:
 
 def test_rerunning_reconcile_does_not_duplicate_case_opened_entries() -> None:
     client, _ = make_client()
-    client.post("/reconcile", params={"as_of": "2025-12-31"})
+    client.post("/reconcile", params={"as_of": "2026-12-31"})
     first = len(client.get("/audit").json())
-    client.post("/reconcile", params={"as_of": "2025-12-31"})
+    client.post("/reconcile", params={"as_of": "2026-12-31"})
     assert len(client.get("/audit").json()) == first
 
 
@@ -92,7 +92,7 @@ def test_rejected_changes_to_resolved_case_are_not_logged() -> None:
 def test_amendment_recording_is_logged() -> None:
     client, _ = make_client()
     client.post(
-        "/contracts/CT-004/amendments",
+        "/contracts/CNT-2026-004/amendments",
         json={
             "title": "Signed scope increase",
             "delta_amount_cents": 1_500_000,
@@ -104,7 +104,7 @@ def test_amendment_recording_is_logged() -> None:
     )
     entry = client.get("/audit").json()[-1]
     assert entry["action"] == "amendment_recorded"
-    assert entry["details"]["contract_id"] == "CT-004"
+    assert entry["details"]["contract_id"] == "CNT-2026-004"
     assert entry["details"]["delta_amount_cents"] == 1_500_000
     assert entry["actor"] == "admin-1"
 

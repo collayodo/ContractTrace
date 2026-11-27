@@ -7,7 +7,7 @@
         "source": "**",
         "run": {
           "serviceId": "contracttrace-api",
-          "region": "us-central1"
+          "region": "africa-south1"
         }
       }
     ]

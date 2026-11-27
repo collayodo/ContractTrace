@@ -18,7 +18,7 @@ The app loads `backend/.env` automatically if present. Existing process environm
 uvicorn app.main:app --reload --env-file .env
 ```
 
-By default, the API uses an in-memory store and seeds ten fictional contracts, their invoices and payments, and a proposed amendment for `CT-004`. A signed, effective amendment for that contract removes the invoice-over-contract flag on the next reconciliation. The original reviewer case remains in the case history.
+By default, the API uses an in-memory store and seeds the shared demo dataset from `app/demo_dataset.json`: ten fictional contracts, their invoices and payments, and three amendments. That file is generated from the frontend data (`frontend/src/data/mockData.js`) by `node scripts/export-demo-dataset.mjs`, so the live API and the offline dashboard present the same records; re-run the script after editing the mock data. Seeding only writes the raw records — reconciliation still derives every case from them, so `POST /reconcile` opens two cap-overrun cases (`CNT-2026-002`, `CNT-2026-008`) plus a payment-mismatch case for each invoice whose disbursement was blocked. Because `CNT-2026-004` already carries a signed, effective amendment, its invoices no longer exceed the authorized amount and it is not flagged.
 
 ## Firestore
 
@@ -36,10 +36,15 @@ Set `NVIDIA_API_KEY` and optionally `NVIDIA_MODEL` to enable `POST /cases/{case_
 - `GET /cases`, `GET /cases/{id}`
 - `POST /cases/{id}/investigation`, `POST /cases/{id}/resolve`
 - `POST /cases/{id}/ai-analysis`
+- `POST /auth/dev-login` (development only, see Access control)
 
 Resolve a case with `determination=confirmed_issue` or `determination=dismissed` and a reviewer note. Resolution and investigation actions are retained on the case record. Interactive OpenAPI docs are available at `/docs`.
 
 Run `POST /reconcile` before requesting AI analysis. The analysis route accepts a case ID, or a contract ID if exactly one case exists for that contract.
+
+## Review SLA
+
+Every case carries lifecycle timestamps: `created_at` when reconciliation opens it, `started_at` when the first investigation note is recorded, `due_at` as the SLA deadline, and `updated_at` on each change. `due_at` is stamped at open time from the SLA policy and stays fixed across re-runs. Cap-overrun cases (`invoice_over_contract`) are treated as HIGH severity with a 7-day window; disbursement discrepancies (`payment_mismatch`, `unmatched_payment`) get a 14-day window. Override either with `SLA_WINDOW_DAYS_HIGH` and `SLA_WINDOW_DAYS_MEDIUM`. The dashboard derives completion time from the resolving investigation entry.
 
 ## Access control
 
@@ -58,6 +63,10 @@ Admins cannot resolve cases and reviewers cannot record amendments, because an a
 The actor on every case entry and audit entry comes from the token. The `actor` field in request bodies is ignored. Denied write attempts by signed in users are recorded in the audit log as `permission_denied`.
 
 For local testing, create a token with `python scripts/issue_dev_token.py reviewer alice` (needs `AUTH_JWT_SECRET` set) and send it as the bearer token. To move to Firebase Auth or Identity Platform later, replace `verify_token` in `app/auth.py`; the roles and endpoint checks stay the same.
+
+The browser frontend calls the API directly, so the API sends CORS headers for the origins listed in `CORS_ALLOW_ORIGINS` (comma-separated, defaults to the local Vite dev server). Set it to the deployed frontend origin in production.
+
+`POST /auth/dev-login` mints a token for `{"user_id": "...", "role": "viewer|reviewer|admin"}` so the frontend can sign in without a separate identity provider. It is disabled when `APP_ENV=production` and returns 404 there. Never expose it in production.
 
 ## Audit log
 

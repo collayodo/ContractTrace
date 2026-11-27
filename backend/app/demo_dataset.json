@@ -1,0 +1,361 @@
+{
+  "contracts": [
+    {
+      "id": "CNT-2026-001",
+      "title": "Road Infrastructure Maintenance & Grading",
+      "track": "Transport & Public Works",
+      "vendor": "Nairobi Infrastructure Corp",
+      "authorized_amount_cents": 50000000,
+      "currency": "USD",
+      "start_date": "2026-01-15",
+      "end_date": "2026-12-31"
+    },
+    {
+      "id": "CNT-2026-002",
+      "title": "Cloud Infrastructure Migration & Managed Services",
+      "track": "Digital Government & ICT",
+      "vendor": "Apex Tech Solutions Ltd",
+      "authorized_amount_cents": 15000000,
+      "currency": "USD",
+      "start_date": "2026-02-01",
+      "end_date": "2026-08-31"
+    },
+    {
+      "id": "CNT-2026-003",
+      "title": "Water Treatment Facility Upgrade",
+      "track": "Water & Sanitation",
+      "vendor": "Rift Valley Civil Works",
+      "authorized_amount_cents": 75000000,
+      "currency": "USD",
+      "start_date": "2026-03-01",
+      "end_date": "2026-11-30"
+    },
+    {
+      "id": "CNT-2026-004",
+      "title": "Regional Medical Supply Fleet Logistics",
+      "track": "Public Health Supply",
+      "vendor": "Highland Logistics Ltd",
+      "authorized_amount_cents": 20000000,
+      "currency": "USD",
+      "start_date": "2026-01-10",
+      "end_date": "2026-06-30"
+    },
+    {
+      "id": "CNT-2026-005",
+      "title": "Solar Power Installation for Public Schools",
+      "track": "Energy & Education",
+      "vendor": "Savannah Energy Ltd",
+      "authorized_amount_cents": 120000000,
+      "currency": "USD",
+      "start_date": "2026-04-01",
+      "end_date": "2026-12-31"
+    },
+    {
+      "id": "CNT-2026-006",
+      "title": "Enterprise Courtroom CCTV & Security Network",
+      "track": "Judiciary Infrastructure",
+      "vendor": "Coastal Security Systems",
+      "authorized_amount_cents": 30000000,
+      "currency": "USD",
+      "start_date": "2026-02-15",
+      "end_date": "2026-10-15"
+    },
+    {
+      "id": "CNT-2026-007",
+      "title": "Public Hospital Laboratory Reagent Procurement",
+      "track": "Public Health Supply",
+      "vendor": "Lakeside Medical Supplies",
+      "authorized_amount_cents": 45000000,
+      "currency": "USD",
+      "start_date": "2026-01-01",
+      "end_date": "2026-07-31"
+    },
+    {
+      "id": "CNT-2026-008",
+      "title": "Digital Governance & ERP Audit Advisory",
+      "track": "Treasury & Audit",
+      "vendor": "Mt. Kenya Advisory Services",
+      "authorized_amount_cents": 18000000,
+      "currency": "USD",
+      "start_date": "2026-05-01",
+      "end_date": "2026-11-01"
+    },
+    {
+      "id": "CNT-2026-009",
+      "title": "Public Portal UI/UX Redesign & Portal Support",
+      "track": "Digital Government & ICT",
+      "vendor": "Victoria Digital Agency",
+      "authorized_amount_cents": 9000000,
+      "currency": "USD",
+      "start_date": "2026-03-15",
+      "end_date": "2026-09-15"
+    },
+    {
+      "id": "CNT-2026-010",
+      "title": "Eco-Friendly Municipal Housing Construction",
+      "track": "Housing & Urban Dev",
+      "vendor": "Mara Eco-Build Solutions",
+      "authorized_amount_cents": 85000000,
+      "currency": "USD",
+      "start_date": "2026-02-01",
+      "end_date": "2026-12-15"
+    }
+  ],
+  "amendments": [
+    {
+      "id": "AMD-004-A1",
+      "contract_id": "CNT-2026-004",
+      "title": "Cap Increase (AMD-2026-004-A1)",
+      "delta_amount_cents": 10000000,
+      "effective_date": "2026-04-20",
+      "status": "signed",
+      "rationale": "Authorized expansion of regional cold-chain medical fleet scope"
+    },
+    {
+      "id": "AMD-008-A1",
+      "contract_id": "CNT-2026-008",
+      "title": "Cap Increase (AMD-2026-008-A1)",
+      "delta_amount_cents": 2000000,
+      "effective_date": "2026-08-25",
+      "status": "proposed",
+      "rationale": "Proposed addendum for ERP security module audit (+$20,000)"
+    },
+    {
+      "id": "AMD-010-A1",
+      "contract_id": "CNT-2026-010",
+      "title": "Cap Increase (AMD-2026-010-A1)",
+      "delta_amount_cents": 25000000,
+      "effective_date": "2026-05-10",
+      "status": "signed",
+      "rationale": "Authorized Phase-2 sustainable housing material escalation"
+    }
+  ],
+  "invoices": [
+    {
+      "id": "INV-101",
+      "contract_id": "CNT-2026-001",
+      "invoice_number": "INV-2026-01",
+      "amount_cents": 15000000,
+      "issue_date": "2026-03-10",
+      "description": "MS-1 milestone"
+    },
+    {
+      "id": "INV-102",
+      "contract_id": "CNT-2026-001",
+      "invoice_number": "INV-2026-02",
+      "amount_cents": 20000000,
+      "issue_date": "2026-06-15",
+      "description": "MS-2 milestone"
+    },
+    {
+      "id": "INV-201",
+      "contract_id": "CNT-2026-002",
+      "invoice_number": "INV-2026-08",
+      "amount_cents": 10000000,
+      "issue_date": "2026-03-01",
+      "description": "MS-1 milestone"
+    },
+    {
+      "id": "INV-202",
+      "contract_id": "CNT-2026-002",
+      "invoice_number": "INV-2026-19",
+      "amount_cents": 8500000,
+      "issue_date": "2026-05-20",
+      "description": "MS-2 milestone"
+    },
+    {
+      "id": "INV-301",
+      "contract_id": "CNT-2026-003",
+      "invoice_number": "INV-2026-03",
+      "amount_cents": 20000000,
+      "issue_date": "2026-02-10",
+      "description": "MS-1 milestone"
+    },
+    {
+      "id": "INV-401",
+      "contract_id": "CNT-2026-004",
+      "invoice_number": "INV-2026-04",
+      "amount_cents": 15000000,
+      "issue_date": "2026-02-01",
+      "description": "MS-1 milestone"
+    },
+    {
+      "id": "INV-402",
+      "contract_id": "CNT-2026-004",
+      "invoice_number": "INV-2026-14",
+      "amount_cents": 11000000,
+      "issue_date": "2026-04-12",
+      "description": "MS-2 milestone"
+    },
+    {
+      "id": "INV-501",
+      "contract_id": "CNT-2026-005",
+      "invoice_number": "INV-2026-51",
+      "amount_cents": 60000000,
+      "issue_date": "2026-05-10",
+      "description": "MS-1 milestone"
+    },
+    {
+      "id": "INV-601",
+      "contract_id": "CNT-2026-006",
+      "invoice_number": "INV-2026-61",
+      "amount_cents": 12000000,
+      "issue_date": "2026-04-01",
+      "description": "MS-1 milestone"
+    },
+    {
+      "id": "INV-701",
+      "contract_id": "CNT-2026-007",
+      "invoice_number": "INV-2026-71",
+      "amount_cents": 45000000,
+      "issue_date": "2026-03-15",
+      "description": "MS-FINAL milestone"
+    },
+    {
+      "id": "INV-801",
+      "contract_id": "CNT-2026-008",
+      "invoice_number": "INV-2026-81",
+      "amount_cents": 18000000,
+      "issue_date": "2026-06-01",
+      "description": "MS-1 milestone"
+    },
+    {
+      "id": "INV-802",
+      "contract_id": "CNT-2026-008",
+      "invoice_number": "INV-2026-89",
+      "amount_cents": 3000000,
+      "issue_date": "2026-08-15",
+      "description": "MS-2 milestone"
+    },
+    {
+      "id": "INV-901",
+      "contract_id": "CNT-2026-009",
+      "invoice_number": "INV-2026-91",
+      "amount_cents": 4500000,
+      "issue_date": "2026-02-25",
+      "description": "MS-1 milestone"
+    },
+    {
+      "id": "INV-1001",
+      "contract_id": "CNT-2026-010",
+      "invoice_number": "INV-2026-101",
+      "amount_cents": 50000000,
+      "issue_date": "2026-03-20",
+      "description": "MS-1 milestone"
+    },
+    {
+      "id": "INV-1002",
+      "contract_id": "CNT-2026-010",
+      "invoice_number": "INV-2026-102",
+      "amount_cents": 45000000,
+      "issue_date": "2026-05-15",
+      "description": "MS-2 milestone"
+    }
+  ],
+  "payments": [
+    {
+      "id": "PAY-9011",
+      "contract_id": "CNT-2026-001",
+      "invoice_id": "INV-101",
+      "amount_cents": 15000000,
+      "payment_date": "2026-03-20",
+      "reference": "PAY-9011"
+    },
+    {
+      "id": "PAY-9012",
+      "contract_id": "CNT-2026-001",
+      "invoice_id": "INV-102",
+      "amount_cents": 20000000,
+      "payment_date": "2026-06-25",
+      "reference": "PAY-9012"
+    },
+    {
+      "id": "PAY-9021",
+      "contract_id": "CNT-2026-002",
+      "invoice_id": "INV-201",
+      "amount_cents": 10000000,
+      "payment_date": "2026-03-10",
+      "reference": "PAY-9021"
+    },
+    {
+      "id": "PAY-9031",
+      "contract_id": "CNT-2026-003",
+      "invoice_id": "INV-301",
+      "amount_cents": 20000000,
+      "payment_date": "2026-02-15",
+      "reference": "PAY-9031"
+    },
+    {
+      "id": "PAY-9041",
+      "contract_id": "CNT-2026-004",
+      "invoice_id": "INV-401",
+      "amount_cents": 15000000,
+      "payment_date": "2026-02-10",
+      "reference": "PAY-9041"
+    },
+    {
+      "id": "PAY-9042",
+      "contract_id": "CNT-2026-004",
+      "invoice_id": "INV-402",
+      "amount_cents": 11000000,
+      "payment_date": "2026-05-01",
+      "reference": "PAY-9042"
+    },
+    {
+      "id": "PAY-9051",
+      "contract_id": "CNT-2026-005",
+      "invoice_id": "INV-501",
+      "amount_cents": 60000000,
+      "payment_date": "2026-05-20",
+      "reference": "PAY-9051"
+    },
+    {
+      "id": "PAY-9061",
+      "contract_id": "CNT-2026-006",
+      "invoice_id": "INV-601",
+      "amount_cents": 12000000,
+      "payment_date": "2026-04-10",
+      "reference": "PAY-9061"
+    },
+    {
+      "id": "PAY-9071",
+      "contract_id": "CNT-2026-007",
+      "invoice_id": "INV-701",
+      "amount_cents": 45000000,
+      "payment_date": "2026-03-25",
+      "reference": "PAY-9071"
+    },
+    {
+      "id": "PAY-9081",
+      "contract_id": "CNT-2026-008",
+      "invoice_id": "INV-801",
+      "amount_cents": 18000000,
+      "payment_date": "2026-06-10",
+      "reference": "PAY-9081"
+    },
+    {
+      "id": "PAY-9091",
+      "contract_id": "CNT-2026-009",
+      "invoice_id": "INV-901",
+      "amount_cents": 4500000,
+      "payment_date": "2026-03-01",
+      "reference": "PAY-9091"
+    },
+    {
+      "id": "PAY-9101",
+      "contract_id": "CNT-2026-010",
+      "invoice_id": "INV-1001",
+      "amount_cents": 50000000,
+      "payment_date": "2026-03-30",
+      "reference": "PAY-9101"
+    },
+    {
+      "id": "PAY-9102",
+      "contract_id": "CNT-2026-010",
+      "invoice_id": "INV-1002",
+      "amount_cents": 45000000,
+      "payment_date": "2026-05-25",
+      "reference": "PAY-9102"
+    }
+  ]
+}
