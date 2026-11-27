@@ -6,10 +6,12 @@ from typing import Any
 import httpx
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from app.ai import analyze_case
 from app.audit import append_audit, list_entries, verify_chain
-from app.auth import Permission, Principal, require
+from app.auth import Permission, Principal, Role, issue_token, require
 from app.models import (
     Amendment,
     AmendmentCreate,
@@ -42,6 +44,32 @@ def create_app(store: Store | None = None) -> FastAPI:
         openapi_url=None if production else "/openapi.json",
     )
     app.state.store = repository
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    class SessionRequest(BaseModel):
+        user_id: str = "aud-urvashi-01"
+        role: Role = Role.reviewer
+
+    @app.post("/auth/session")
+    def create_demo_session(request: SessionRequest) -> dict[str, Any]:
+        if not repository.list("contracts"):
+            seed_demo_data(repository)
+        if not repository.list("cases"):
+            reconcile(repository, date.today())
+        token = issue_token(user_id=request.user_id, role=request.role)
+        return {
+            "access_token": token,
+            "token_type": "bearer",
+            "user_id": request.user_id,
+            "role": request.role.value,
+        }
 
     @app.get("/health")
     def health() -> dict[str, str]:

@@ -276,20 +276,97 @@ function AuditorLogin({ onLogin }) {
 // MAIN APPLICATION
 // ==========================================
 
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
+
+function loadSavedState(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export default function App() {
   const [currentAuditor, setCurrentAuditor] = useState(AUDITORS[0]);
   const [isAuthenticated, setIsAuthenticated] = useState(true); // Set to false if you want login screen first on load
   const [page, setPage] = useState("overview");
   const [selectedFlagId, setSelectedFlagId] = useState(flags[0]?.id || "");
   const [selectedContractId, setSelectedContractId] = useState("");
-  const [decisions, setDecisions] = useState({});
-  const [assignments, setAssignments] = useState({
-    "CASE-002": "aud-urvashi-01",
-    "CASE-003": "aud-collins-02",
-    "CASE-008": "aud-zayyan-03",
-    "CASE-009": "",
-  });
-  const [assignmentLogs, setAssignmentLogs] = useState([]);
+  const [authToken, setAuthToken] = useState(() => loadSavedState("ct_jwt_token", ""));
+  const [decisions, setDecisions] = useState(() => loadSavedState("ct_decisions_v1", {}));
+  const [assignments, setAssignments] = useState(() =>
+    loadSavedState("ct_assignments_v1", {
+      "CASE-002": "aud-urvashi-01",
+      "CASE-003": "aud-collins-02",
+      "CASE-008": "aud-zayyan-03",
+      "CASE-009": "",
+    })
+  );
+  const [assignmentLogs, setAssignmentLogs] = useState(() => loadSavedState("ct_logs_v1", []));
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("ct_decisions_v1", JSON.stringify(decisions));
+      localStorage.setItem("ct_assignments_v1", JSON.stringify(assignments));
+      localStorage.setItem("ct_logs_v1", JSON.stringify(assignmentLogs));
+    } catch {}
+  }, [decisions, assignments, assignmentLogs]);
+
+  useEffect(() => {
+    if (!API_BASE) return;
+    let cancelled = false;
+    async function syncBackend() {
+      try {
+        const res = await fetch(`${API_BASE}/auth/session`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: currentAuditor.uid,
+            role: "reviewer",
+          }),
+        });
+        if (!res.ok) return;
+        const session = await res.json();
+        if (cancelled || !session.access_token) return;
+        setAuthToken(session.access_token);
+        localStorage.setItem("ct_jwt_token", JSON.stringify(session.access_token));
+
+        const casesRes = await fetch(`${API_BASE}/cases`, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (casesRes.ok) {
+          const remoteCases = await casesRes.json();
+          if (!cancelled && Array.isArray(remoteCases)) {
+            setDecisions((prev) => {
+              const merged = { ...prev };
+              for (const rc of remoteCases) {
+                if (rc.status === "resolved" && rc.determination) {
+                  const mappedStatus =
+                    rc.determination === "confirmed_issue" ? "CONFIRMED" : "DISMISSED";
+                  if (!merged[rc.id]) {
+                    merged[rc.id] = {
+                      status: mappedStatus,
+                      notes: rc.resolution_note || "Verified via Cloud Run API",
+                      timestamp: rc.updated_at || new Date().toISOString(),
+                      auditor: `${currentAuditor.name} (${currentAuditor.uid})`,
+                    };
+                  }
+                }
+              }
+              return merged;
+            });
+          }
+        }
+      } catch (err) {
+        console.warn("Backend sync fallback:", err);
+      }
+    }
+    syncBackend();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentAuditor]);
   const [globalSearch, setGlobalSearch] = useState("");
   const [showRulesModal, setShowRulesModal] = useState(false);
 
@@ -324,16 +401,37 @@ export default function App() {
     ]);
   };
 
-  const handleRecordDecision = (flagId, newStatus, notesText) => {
+  const handleRecordDecision = async (flagId, newStatus, notesText) => {
+    const entry = {
+      status: newStatus,
+      notes: notesText,
+      timestamp: new Date().toISOString(),
+      auditor: `${currentAuditor.name} (${currentAuditor.uid})`,
+    };
     setDecisions((prev) => ({
       ...prev,
-      [flagId]: {
-        status: newStatus,
-        notes: notesText,
-        timestamp: new Date().toISOString(),
-        auditor: `${currentAuditor.name} (${currentAuditor.uid})`,
-      },
+      [flagId]: entry,
     }));
+
+    if (API_BASE && authToken) {
+      try {
+        const determination =
+          newStatus === "CONFIRMED" ? "confirmed_issue" : "dismissed";
+        await fetch(`${API_BASE}/cases/${encodeURIComponent(flagId)}/resolve`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authToken}`,
+          },
+          body: JSON.stringify({
+            determination,
+            note: notesText || "Auditor sign-off recorded via Reviewer Workbench.",
+          }),
+        });
+      } catch (err) {
+        console.warn("Cloud Run resolve call failed:", err);
+      }
+    }
   };
 
   if (!isAuthenticated) {
