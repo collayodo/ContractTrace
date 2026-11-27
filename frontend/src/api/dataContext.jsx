@@ -58,7 +58,6 @@ export function AuditDataProvider({ children }) {
         const evidences = await Promise.all(
           contracts.map((contract) => api.contractEvidence(activeToken, contract.id, controller.signal))
         );
-        await api.reconcile(activeToken);
         const [cases, audit] = await Promise.all([
           api.listCases(activeToken, controller.signal),
           api.audit(activeToken, controller.signal),
