@@ -52,6 +52,24 @@ def create_app(store: Store | None = None) -> FastAPI:
         allow_headers=["*"],
     )
 
+    class SessionRequest(BaseModel):
+        user_id: str = "aud-urvashi-01"
+        role: Role = Role.reviewer
+
+    @app.post("/auth/session")
+    def create_demo_session(request: SessionRequest) -> dict[str, Any]:
+        if not repository.list("contracts"):
+            seed_demo_data(repository)
+        if not repository.list("cases"):
+            reconcile(repository, date.today())
+        token = issue_token(user_id=request.user_id, role=request.role)
+        return {
+            "access_token": token,
+            "token_type": "bearer",
+            "user_id": request.user_id,
+            "role": request.role.value,
+        }
+
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
